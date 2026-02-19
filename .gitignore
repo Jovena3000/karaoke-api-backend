@@ -1,2 +1,6 @@
 .vercel
 .env*.local
+node_modules/
+.env
+.DS_Store
+vercel.json
