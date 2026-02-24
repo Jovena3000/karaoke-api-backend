@@ -5,38 +5,24 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// ===== ROTA PRINCIPAL =====
-app.get('/', (req, res) => {
-    res.json({ 
-        status: 'online',
-        message: '🎤 API Karaokê funcionando!',
-        timestamp: new Date().toISOString()
-    });
-});
+// Importar as rotas de outros arquivos
+const authRoutes = require('./auth');
+const karaokeRoutes = require('./karaoke');
+// const webhookRoutes = require('./webhook'); // Webhooks geralmente são rotas separadas
 
-// ===== ROTA DE STATUS =====
+// Montar as rotas
+app.use('/api/auth', authRoutes);
+app.use('/api/karaoke', karaokeRoutes);
+
+// Sua rota de status existente
 app.get('/api/status', (req, res) => {
-    res.json({ 
-        servidor: '🟢 Online',
-        ambiente: process.env.NODE_ENV || 'development',
-        token_mp: process.env.MP_ACCESS_TOKEN ? '✅ presente' : '❌ ausente',
-        timestamp: new Date().toISOString()
-    });
+    res.json({ servidor: '🟢 Online' });
 });
 
-// ===== ROTA DE PAGAMENTO (SIMPLIFICADA PARA TESTE) =====
-app.post('/api/criar-pagamento', (req, res) => {
-    const { plano, email } = req.body;
-    
-    if (!plano || !email) {
-        return res.status(400).json({ erro: 'Plano e email obrigatórios' });
-    }
-    
-    res.json({
-        sucesso: true,
-        mensagem: 'Modo teste - pagamento simulado',
-        dados_recebidos: { plano, email }
-    });
+// Rota raiz (opcional)
+app.get('/', (req, res) => {
+    res.json({ message: 'API Karaokê' });
 });
 
+// Exportar para o Vercel
 module.exports = app;
