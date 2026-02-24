@@ -1,34 +1,36 @@
 const express = require('express');
-const authMiddleware = require('../src/middlewares/authMiddleware');
+const cors = require('cors');
 
-const router = express.Router();
+const app = express();
+app.use(cors({ origin: '*' }));
+app.use(express.json());
 
-// Todas as rotas aqui exigem autenticação
-router.use(authMiddleware);
+// Importar rotas
+const authRoutes = require('./auth');
+const karaokeRoutes = require('./karaoke');
 
-// Rota para criar sala (apenas usuários autenticados)
-router.post('/sala', (req, res) => {
+// ===== ROTAS PÚBLICAS =====
+app.get('/', (req, res) => {
     res.json({ 
-        sucesso: true,
-        mensagem: 'Sala criada com sucesso',
-        usuario: req.user.email
+        status: 'online',
+        message: '🎤 API Karaokê funcionando!',
+        timestamp: new Date().toISOString()
     });
 });
 
-// Rota para carregar vídeo
-router.post('/video', (req, res) => {
+app.get('/api/status', (req, res) => {
     res.json({ 
-        sucesso: true,
-        mensagem: 'Vídeo carregado com sucesso'
+        servidor: '🟢 Online',
+        ambiente: process.env.NODE_ENV || 'development'
     });
 });
 
-// Rota para obter fila de músicas
-router.get('/fila', (req, res) => {
-    res.json({ 
-        sucesso: true,
-        fila: [] // Buscar do banco de dados
-    });
-});
+// Montar rotas
+app.use('/api/auth', authRoutes);
+app.use('/api/karaoke', karaokeRoutes);
 
-module.exports = router;
+// Webhook (rota separada)
+app.use('/api/webhook', require('./webhook'));
+
+// ===== EXPORTAÇÃO =====
+module.exports = app;
