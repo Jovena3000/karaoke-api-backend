@@ -27,6 +27,14 @@ app.get('/api/status', (req, res) => {
         timestamp: new Date().toISOString()
     });
 });
+// ===== ROTAS DE AUTENTICAÇÃO =====
+app.post('/api/auth/register', (req, res) => {
+    res.json({ mensagem: 'Rota de registro - implementar depois' });
+});
+
+app.post('/api/auth/login', (req, res) => {
+    res.json({ mensagem: 'Rota de login - implementar depois' });
+});
 
 // ===== ROTAS DE AUTENTICAÇÃO =====
 app.post('/api/auth/register', async (req, res) => {
