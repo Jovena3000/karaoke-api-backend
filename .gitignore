@@ -1,6 +1,5 @@
-.vercel
-.env*.local
+-H
+-d
+teste-supabase.js
 node_modules/
 .env
-.DS_Store
-vercel.json
