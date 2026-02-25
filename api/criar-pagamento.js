@@ -1,6 +1,6 @@
 const mercadopago = require('mercadopago');
 
-// ✅ Configurar Mercado Pago (método correto do SDK)
+// Configuração correta para a versão 1.5.14
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
@@ -21,12 +21,6 @@ module.exports = async (req, res) => {
     try {
         const { title, price, quantity, plan, email } = req.body;
 
-        // Validar email (boa prática)
-        if (!email) {
-            return res.status(400).json({ erro: 'Email é obrigatório' });
-        }
-
-        // Criar preferência de pagamento
         const preference = {
             items: [
                 {
@@ -38,7 +32,7 @@ module.exports = async (req, res) => {
                 }
             ],
             payer: {
-                email: email
+                email: email || ''
             },
             back_urls: {
                 success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
@@ -54,7 +48,6 @@ module.exports = async (req, res) => {
             external_reference: `pedido_${Date.now()}`
         };
 
-        // Criar a preferência no Mercado Pago
         const response = await mercadopago.preferences.create(preference);
 
         res.status(200).json({
