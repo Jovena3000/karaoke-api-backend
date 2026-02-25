@@ -1,8 +1,9 @@
 const mercadopago = require('mercadopago');
 
-mercadopago.configure({
+// Configurar Mercado Pago (versão mais recente do SDK)
+mercadopago.configurations = {
     access_token: process.env.MP_ACCESS_TOKEN
-});
+};
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,6 +21,7 @@ module.exports = async (req, res) => {
     try {
         const { title, price, quantity, plan, email } = req.body;
 
+        // Criar preferência de pagamento
         const preference = {
             items: [
                 {
@@ -47,6 +49,7 @@ module.exports = async (req, res) => {
             external_reference: `pedido_${Date.now()}`
         };
 
+        // Criar a preferência no Mercado Pago
         const response = await mercadopago.preferences.create(preference);
 
         res.status(200).json({
