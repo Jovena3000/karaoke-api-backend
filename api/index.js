@@ -5,24 +5,27 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// Importar as rotas de outros arquivos
+// ===== IMPORTAR AS ROTAS DOS ARQUIVOS =====
 const authRoutes = require('./auth');
 const karaokeRoutes = require('./karaoke');
 // const webhookRoutes = require('./webhook'); // Webhooks geralmente são rotas separadas
 
-// Montar as rotas
+// ===== MONTAR AS ROTAS =====
 app.use('/api/auth', authRoutes);
 app.use('/api/karaoke', karaokeRoutes);
 
-// Sua rota de status existente
-app.get('/api/status', (req, res) => {
-    res.json({ servidor: '🟢 Online' });
-});
-
-// Rota raiz (opcional)
+// ===== ROTAS PÚBLICAS =====
 app.get('/', (req, res) => {
-    res.json({ message: 'API Karaokê' });
+    res.json({ status: 'online', message: 'API Karaokê' });
 });
 
-// Exportar para o Vercel
+app.get('/api/status', (req, res) => {
+    res.json({ 
+        servidor: '🟢 Online',
+        ambiente: process.env.NODE_ENV || 'development',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// ===== EXPORTAÇÃO =====
 module.exports = app;
