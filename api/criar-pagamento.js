@@ -1,6 +1,6 @@
 const mercadopago = require('mercadopago');
 
-// Configurar Mercado Pago com variável de ambiente
+// Configurar Mercado Pago com variável de ambiente (NUNCA colocar token direto!)
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
@@ -37,7 +37,7 @@ module.exports = async (req, res) => {
                 }
             ],
             payer: {
-                email: email || 'cliente@email.com'
+                email: email || ''
             },
             back_urls: {
                 success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
@@ -45,11 +45,12 @@ module.exports = async (req, res) => {
                 pending: 'https://karaoke-multiplayer.pages.dev/pendente.html'
             },
             auto_return: 'approved',
-            external_reference: `pedido_${Date.now()}`,
+            notification_url: 'https://karaoke-api-backend2-omega.vercel.app/api/webhook',
             payment_methods: {
                 excluded_payment_methods: [],
                 installments: 1
-            }
+            },
+            external_reference: `pedido_${Date.now()}`
         };
 
         // Criar a preferência no Mercado Pago
@@ -57,6 +58,7 @@ module.exports = async (req, res) => {
 
         // Retornar o ID da preferência e o link de pagamento
         res.status(200).json({
+            sucesso: true,
             id: response.body.id,
             init_point: response.body.init_point
         });
@@ -64,7 +66,7 @@ module.exports = async (req, res) => {
     } catch (error) {
         console.error('Erro ao criar preferência:', error);
         res.status(500).json({ 
-            error: 'Erro ao criar preferência de pagamento',
+            erro: 'Erro ao criar preferência de pagamento',
             detalhe: error.message 
         });
     }
