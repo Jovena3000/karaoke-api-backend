@@ -9,8 +9,8 @@ const supabase = createClient(
 const JWT_SECRET = process.env.JWT_SECRET;
 
 module.exports = async (req, res) => {
-    // Configurar CORS para este arquivo também
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // Configurar CORS
+    res.setHeader('Access-Control-Allow-Origin', 'https://karaoke-multiplayer.pages.dev');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -22,13 +22,13 @@ module.exports = async (req, res) => {
         return res.status(405).json({ erro: 'Método não permitido' });
     }
 
-    const { email, senha } = req.body;
-
-    if (!email || !senha) {
-        return res.status(400).json({ erro: 'Email e senha são obrigatórios' });
-    }
-
     try {
+        const { email, senha } = req.body;
+
+        if (!email || !senha) {
+            return res.status(400).json({ erro: 'Email e senha são obrigatórios' });
+        }
+
         const { data: user, error } = await supabase
             .from('usuarios')
             .select('*')
@@ -52,7 +52,11 @@ module.exports = async (req, res) => {
         res.json({
             sucesso: true,
             token,
-            usuario: { nome: user.nome, email: user.email, plano: user.plano }
+            usuario: {
+                nome: user.nome,
+                email: user.email,
+                plano: user.plano
+            }
         });
 
     } catch (error) {
