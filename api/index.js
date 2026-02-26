@@ -5,9 +5,9 @@ const criarPagamento = require('./criar-pagamento');
 
 const app = express();
 
-// ===== CONFIGURAÇÃO CORS SIMPLIFICADA E ROBUSTA =====
+// CORS
 app.use(cors({
-    origin: 'https://karaoke-multiplayer.pages.dev', // 🔥 APENAS SEU FRONTEND
+    origin: 'https://karaoke-multiplayer.pages.dev',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
@@ -15,7 +15,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// ===== TRATAMENTO EXPLÍCITO PARA OPTIONS =====
+// OPTIONS
 app.options('*', (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', 'https://karaoke-multiplayer.pages.dev');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -41,8 +41,4 @@ app.get('/api/status', (req, res) => {
 app.post('/api/auth/login', authHandler);
 app.post('/api/criar-pagamento', criarPagamento);
 
-<<<<<<< HEAD
 module.exports = app;
-=======
-module.exports = app;
->>>>>>> ccfa9fdc768ecdc8a7e34029b0c896241bff2b89
