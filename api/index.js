@@ -41,4 +41,8 @@ app.get('/api/status', (req, res) => {
 app.post('/api/auth/login', authHandler);
 app.post('/api/criar-pagamento', criarPagamento);
 
+<<<<<<< HEAD
 module.exports = app;
+=======
+module.exports = app;
+>>>>>>> ccfa9fdc768ecdc8a7e34029b0c896241bff2b89
