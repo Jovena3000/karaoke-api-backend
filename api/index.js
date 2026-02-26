@@ -8,8 +8,23 @@ const { createClient } = require('@supabase/supabase-js');
 const criarPagamento = require('./criar-pagamento');
 
 const app = express();
-app.use(cors({ origin: '*' }));
+
+// ===== CONFIGURAÇÃO CORS ROBUSTA =====
+app.use(cors({ 
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
+
+// ===== TRATAMENTO EXPLÍCITO PARA PREFLIGHT OPTIONS =====
+app.options('*', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.sendStatus(200);
+});
 
 // ===== CONFIGURAÇÕES =====
 const supabase = createClient(
