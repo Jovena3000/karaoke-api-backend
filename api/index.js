@@ -1,7 +1,17 @@
 const express = require('express');
 const cors = require('cors');
-const authHandler = require('./auth');
-const criarPagamento = require('./criar-pagamento');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { createClient } = require('@supabase/supabase-js');
+const mercadopago = require('mercadopago');
+
+// Configurações
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+);
+const JWT_SECRET = process.env.JWT_SECRET;
+mercadopago.configure({ access_token: process.env.MP_ACCESS_TOKEN });
 
 const app = express();
 
@@ -12,7 +22,6 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
-
 app.use(express.json());
 
 // OPTIONS
@@ -24,21 +33,110 @@ app.options('*', (req, res) => {
     res.sendStatus(200);
 });
 
-// Rotas públicas
+// ===== ROTA DE STATUS =====
+app.get('/api/status', (req, res) => {
+    res.json({ servidor: '🟢 Online', ambiente: process.env.NODE_ENV || 'development', timestamp: new Date().toISOString() });
+});
+
+// ===== ROTA DE LOGIN =====
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, senha } = req.body;
+        if (!email || !senha) return res.status(400).json({ erro: 'Email e senha obrigatórios' });
+
+        const { data: user, error } = await supabase
+            .from('usuarios')
+            .select('*')
+            .eq('email', email)
+            .single();
+
+        if (!user || !(await bcrypt.compare(senha, user.senha_hash)))
+            return res.status(401).json({ erro: 'Credenciais inválidas' });
+
+        if (user.status !== 'ativo')
+            return res.status(403).json({ erro: 'Pagamento pendente' });
+
+        const token = jwt.sign(
+            { userId: user.id, email: user.email, plano: user.plano },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.json({ sucesso: true, token, usuario: { nome: user.nome, email: user.email, plano: user.plano } });
+    } catch (error) {
+        console.error('Erro no login:', error);
+        res.status(500).json({ erro: 'Erro interno' });
+    }
+});
+
+// ===== ROTA DE REGISTRO =====
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { email, senha, nome, plano } = req.body;
+        if (!email || !senha || !nome || !plano)
+            return res.status(400).json({ erro: 'Todos os campos obrigatórios' });
+
+        const { data: existingUser } = await supabase
+            .from('usuarios')
+            .select('id')
+            .eq('email', email)
+            .single();
+
+        if (existingUser) return res.status(400).json({ erro: 'Email já cadastrado' });
+
+        const senhaHash = await bcrypt.hash(senha, 10);
+        const { error } = await supabase
+            .from('usuarios')
+            .insert([{ email, senha_hash: senhaHash, nome, plano, status: 'inativo' }]);
+
+        if (error) throw error;
+        res.status(201).json({ sucesso: true, mensagem: 'Usuário criado. Aguarde confirmação do pagamento.' });
+    } catch (error) {
+        console.error('Erro no registro:', error);
+        res.status(500).json({ erro: 'Erro interno' });
+    }
+});
+
+// ===== ROTA DE PAGAMENTO =====
+app.post('/api/criar-pagamento', async (req, res) => {
+    try {
+        const { title, price, plan, email } = req.body;
+        const preference = {
+            items: [{
+                title: title || 'Plano Karaokê',
+                unit_price: parseFloat(price) || 24.90,
+                quantity: 1,
+                currency_id: 'BRL',
+                description: plan || 'Plano Trimestral'
+            }],
+            payer: { email: email || '' },
+            back_urls: {
+                success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
+                failure: 'https://karaoke-multiplayer.pages.dev/erro.html',
+                pending: 'https://karaoke-multiplayer.pages.dev/pendente.html'
+            },
+            auto_return: 'approved',
+            notification_url: 'https://karaoke-api-backend2-omega.vercel.app/api/webhook',
+            external_reference: `pedido_${Date.now()}`
+        };
+
+        const response = await mercadopago.preferences.create(preference);
+        res.json({ sucesso: true, id: response.body.id, init_point: response.body.init_point });
+    } catch (error) {
+        console.error('Erro no pagamento:', error);
+        res.status(500).json({ erro: 'Erro no pagamento' });
+    }
+});
+
+// ===== WEBHOOK =====
+app.post('/api/webhook', (req, res) => {
+    console.log('Webhook recebido:', req.body);
+    res.status(200).json({ received: true });
+});
+
+// ===== ROTA PRINCIPAL =====
 app.get('/', (req, res) => {
     res.json({ status: 'online', message: '🎤 API Karaokê' });
 });
-
-app.get('/api/status', (req, res) => {
-    res.json({ 
-        servidor: '🟢 Online',
-        ambiente: process.env.NODE_ENV || 'development',
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Rotas de outros arquivos
-app.post('/api/auth/login', authHandler);
-app.post('/api/criar-pagamento', criarPagamento);
 
 module.exports = app;
