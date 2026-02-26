@@ -3,3 +3,4 @@
 teste-supabase.js
 node_modules/
 .env
+.vercel
