@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).end();
+    return res.status(405).json({ erro: 'Método não permitido' });
   }
 
   try {
@@ -33,30 +33,48 @@ export default async function handler(req, res) {
       return res.status(400).json({ erro: 'Email e senha obrigatórios' });
     }
 
-    const { data: user } = await supabase
+    const { data: user, error } = await supabase
       .from('usuarios')
       .select('*')
       .eq('email', email)
       .single();
 
-    if (!user || !(await bcrypt.compare(senha, user.senha_hash))) {
+    if (error || !user) {
       return res.status(401).json({ erro: 'Credenciais inválidas' });
     }
 
+    // Verificar se a senha está correta
+    const senhaCorreta = await bcrypt.compare(senha, user.senha_hash);
+    if (!senhaCorreta) {
+      return res.status(401).json({ erro: 'Credenciais inválidas' });
+    }
+
+    // Verificar status da conta
     if (user.status !== 'ativo') {
       return res.status(403).json({ erro: 'Pagamento pendente' });
     }
 
+    // Verificar se o plano não expirou (caso tenha data de expiração)
+    if (user.data_expiracao && new Date(user.data_expiracao) < new Date()) {
+      return res.status(403).json({ erro: 'Plano expirado' });
+    }
+
+    // Gerar token JWT
     const token = jwt.sign(
-      { userId: user.id, email: user.email, plano: user.plano },
+      { 
+        userId: user.id, 
+        email: user.email, 
+        plano: user.plano 
+      },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    return res.json({
+    return res.status(200).json({
       sucesso: true,
       token,
       usuario: {
+        id: user.id,
         nome: user.nome,
         email: user.email,
         plano: user.plano
@@ -64,7 +82,7 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ erro: 'Erro interno' });
+    console.error('Erro no login:', err);
+    return res.status(500).json({ erro: 'Erro interno do servidor' });
   }
 }
