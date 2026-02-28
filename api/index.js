@@ -165,7 +165,7 @@ app.post('/api/criar-pagamento', async (req, res) => {
       },
       auto_return: 'approved',
       notification_url: 'https://karaoke-api-backend2-omega.vercel.app/api/webhook',
-      external_reference: `pedido_${Date.now()}`
+      external_reference: JSON.stringify({ email, plan })
     };
 
     const response = await mercadopago.preferences.create(preference);
@@ -183,9 +183,46 @@ app.post('/api/criar-pagamento', async (req, res) => {
 });
 
 // ================= WEBHOOK =================
-app.post('/api/webhook', (req, res) => {
+app.post('/api/webhook', async (req, res) => {
   setCors(res);
-  console.log('Webhook recebido:', req.body);
+  console.log('📩 Webhook recebido:', req.body);
+  
+  const { type, data } = req.body;
+  
+  if (type === 'payment') {
+    const paymentId = data.id;
+    console.log(`💰 Pagamento ${paymentId} recebido`);
+    
+    try {
+      // Buscar detalhes do pagamento no Mercado Pago
+      const payment = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
+      }).then(res => res.json());
+
+      if (payment.status === 'approved') {
+        const { email, plan } = JSON.parse(payment.external_reference);
+        
+        // Gerar senha temporária
+        const senhaTemporaria = Math.random().toString(36).slice(-8);
+        const hash = await bcrypt.hash(senhaTemporaria, 10);
+
+        // Inserir usuário no banco
+        await supabase.from('usuarios').insert([{
+          email,
+          senha_hash: hash,
+          nome: email.split('@')[0],
+          plano: plan,
+          status: 'ativo'
+        }]);
+
+        console.log(`✅ Usuário ${email} criado com senha: ${senhaTemporaria}`);
+        // Aqui você pode enviar e-mail com a senha
+      }
+    } catch (err) {
+      console.error('Erro ao processar webhook:', err);
+    }
+  }
+  
   res.status(200).json({ received: true });
 });
 
@@ -196,22 +233,6 @@ app.get('/', (req, res) => {
     status: 'online',
     message: '🎤 API Karaokê'
   });
-  // ===== WEBHOOK PARA RECEBER CONFIRMAÇÃO DO MERCADO PAGO =====
-app.post('/api/webhook', async (req, res) => {
-    console.log('📩 Webhook recebido:', req.body);
-    
-    const { type, data } = req.body;
-    
-    if (type === 'payment') {
-        const paymentId = data.id;
-        console.log(`💰 Pagamento ${paymentId} recebido`);
-        
-        // Aqui você vai consultar o Mercado Pago e criar o usuário
-        // (implementaremos depois)
-    }
-    
-    res.status(200).json({ received: true });
-});
 });
 
 module.exports = app;
