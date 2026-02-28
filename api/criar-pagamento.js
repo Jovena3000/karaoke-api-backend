@@ -60,7 +60,7 @@ module.exports = async (req, res) => {
                 pending: 'https://karaoke-multiplayer.pages.dev/pendente.html'
             },
             auto_return: 'approved',
-            notification_url: 'https://karaoke-api-backend2-omega.vercel.app/api/webhook',
+            notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
             payment_methods: {
                 excluded_payment_methods: [],
                 installments: 1
