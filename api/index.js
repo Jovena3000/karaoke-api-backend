@@ -196,6 +196,22 @@ app.get('/', (req, res) => {
     status: 'online',
     message: '🎤 API Karaokê'
   });
+  // ===== WEBHOOK PARA RECEBER CONFIRMAÇÃO DO MERCADO PAGO =====
+app.post('/api/webhook', async (req, res) => {
+    console.log('📩 Webhook recebido:', req.body);
+    
+    const { type, data } = req.body;
+    
+    if (type === 'payment') {
+        const paymentId = data.id;
+        console.log(`💰 Pagamento ${paymentId} recebido`);
+        
+        // Aqui você vai consultar o Mercado Pago e criar o usuário
+        // (implementaremos depois)
+    }
+    
+    res.status(200).json({ received: true });
+});
 });
 
 module.exports = app;
