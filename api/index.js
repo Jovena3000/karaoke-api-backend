@@ -145,31 +145,21 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ erro: 'Erro interno' });
   }
 });
-
 // ================= PAYMENT (CORRIGIDO) =================
-// ================= PAYMENT (VERSÃO CORRIGIDA COM SANDBOX) =================
 app.post('/api/criar-pagamento', async (req, res) => {
-  // Log da requisição para debug
-  console.log('📥 REQUISIÇÃO DE PAGAMENTO:', {
-    body: req.body,
-    headers: req.headers['content-type']
-  });
-
   try {
     const { plan, email } = req.body;
     
-    console.log('📦 Dados recebidos:', { plan, email });
+    console.log('📥 Requisição de pagamento:', { plan, email });
 
-    // Validação
     if (!plan || !email) {
-      console.log('❌ Campos obrigatórios faltando');
       return res.status(400).json({ 
         sucesso: false, 
         erro: 'Plano e email são obrigatórios' 
       });
     }
 
-    // Tabela de preços dos planos
+    // Tabela de preços
     const prices = {
       mensal: 19.90,
       trimestral: 24.90,
@@ -178,41 +168,18 @@ app.post('/api/criar-pagamento', async (req, res) => {
     };
 
     const price = prices[plan] || 24.90;
-    console.log('💰 Preço calculado:', { plan, price });
 
-    // Verificar se está em ambiente de teste
-    const isTest = process.env.NODE_ENV !== 'production' || process.env.USE_SANDBOX === 'true';
-    
-    // Escolher o token correto (teste ou produção)
-    const accessToken = isTest 
-      ? process.env.MP_ACCESS_TOKEN_TESTE 
-      : process.env.MP_ACCESS_TOKEN;
-
-    if (!accessToken) {
-      console.log('⚠️ Token do Mercado Pago não configurado, usando modo simulação');
-      
-      // Modo simulação - retorna link fictício
+    // Se não tiver Mercado Pago configurado, retorna simulação
+    if (!process.env.MP_ACCESS_TOKEN) {
+      console.log('⚠️ Usando modo simulação');
       return res.json({
         sucesso: true,
         simulado: true,
         id: 'SIMULADO_' + Date.now(),
-        init_point: `https://mercadopago.com.br/checkout?plan=${plan}&email=${encodeURIComponent(email)}`,
-        mensagem: 'MODO TESTE: Pagamento simulado. Use cartão 5031 4332 1540 6351'
+        init_point: 'https://mercadopago.com.br/teste'
       });
     }
 
-    // Configurar Mercado Pago
-    mercadopago.configure({
-      access_token: accessToken,
-      sandbox: isTest // Ativa modo sandbox se for teste
-    });
-
-    console.log('⚙️ Mercado Pago configurado:', { 
-      sandbox: isTest,
-      hasToken: !!accessToken 
-    });
-
-    // Criar preferência de pagamento
     const preference = {
       items: [{
         title: `Plano Karaokê ${plan}`,
@@ -220,9 +187,7 @@ app.post('/api/criar-pagamento', async (req, res) => {
         currency_id: 'BRL',
         unit_price: price
       }],
-      payer: { 
-        email: email 
-      },
+      payer: { email },
       back_urls: {
         success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
         failure: 'https://karaoke-multiplayer.pages.dev/erro.html',
@@ -230,53 +195,57 @@ app.post('/api/criar-pagamento', async (req, res) => {
       },
       auto_return: 'approved',
       notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-      external_reference: JSON.stringify({ 
-        email: email, 
-        plan: plan,
-        timestamp: Date.now()
-      })
+      external_reference: JSON.stringify({ email, plan })
     };
 
-    console.log('📤 Enviando para Mercado Pago...');
-    
-    // Criar preferência no Mercado Pago
     const response = await mercadopago.preferences.create(preference);
     
-    console.log('✅ Pagamento criado com sucesso!');
-    console.log('📌 ID:', response.body.id);
-    console.log('🔗 Sandbox init_point:', response.body.sandbox_init_point);
-    console.log('🔗 Produção init_point:', response.body.init_point);
+    console.log('✅ Pagamento criado:', response.body.id);
 
-    // Retornar o link apropriado (sandbox ou produção)
     res.json({
       sucesso: true,
       id: response.body.id,
-      init_point: isTest ? response.body.sandbox_init_point : response.body.init_point,
-      sandbox: isTest
+      init_point: response.body.init_point
     });
 
   } catch (error) {
-    console.error('❌ ERRO NO PAGAMENTO:');
-    console.error('Mensagem:', error.message);
-    console.error('Stack:', error.stack);
-    console.error('Nome:', error.name);
-    
-    // Mensagem amigável para o usuário
-    let mensagemErro = 'Erro ao processar pagamento';
-    
-    if (error.message.includes('access_token')) {
-      mensagemErro = 'Token do Mercado Pago inválido ou não configurado';
-    } else if (error.message.includes('connection')) {
-      mensagemErro = 'Erro de conexão com o Mercado Pago';
-    }
-    
+    console.error('❌ Payment error:', error);
     res.status(500).json({ 
       sucesso: false, 
-      erro: mensagemErro,
-      detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
+      erro: 'Erro no pagamento',
+      detalhe: error.message 
     });
   }
 });
+
+// ================= WEBHOOK =================
+app.post('/api/webhook', async (req, res) => {
+  console.log('📩 Webhook recebido:', req.body);
+  
+  const { type, data } = req.body;
+  
+  if (type === 'payment') {
+    const paymentId = data.id;
+    console.log(`💰 Pagamento ${paymentId} recebido`);
+    
+    try {
+      const payment = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
+      }).then(res => res.json());
+
+      if (payment.status === 'approved') {
+        const { email, plan } = JSON.parse(payment.external_reference);
+        
+        const senhaTemporaria = Math.random().toString(36).slice(-8);
+        const hash = await bcrypt.hash(senhaTemporaria, 10);
+
+        await supabase.from('usuarios').insert([{
+          email,
+          senha_hash: hash,
+          nome: email.split('@')[0],
+          plano: plan,
+          status: 'ativo'
+        }]);
 
         console.log(`✅ Usuário ${email} criado com senha: ${senhaTemporaria}`);
         // TODO: Enviar e-mail com a senha
