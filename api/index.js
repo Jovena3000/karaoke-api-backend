@@ -145,13 +145,20 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ erro: 'Erro interno' });
   }
 });
-// ================= PAYMENT (CORRIGIDO) =================
+// ================= PAYMENT (VERSÃO CORRIGIDA) =================
 app.post('/api/criar-pagamento', async (req, res) => {
+  setCors(res);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   try {
     const { plan, email } = req.body;
     
-    console.log('📥 Requisição de pagamento:', { plan, email });
+    console.log('📥 Requisição recebida:', { plan, email });
 
+    // Validação
     if (!plan || !email) {
       return res.status(400).json({ 
         sucesso: false, 
@@ -159,27 +166,26 @@ app.post('/api/criar-pagamento', async (req, res) => {
       });
     }
 
-    // Tabela de preços
+    // Tabela de preços dos planos
     const prices = {
       mensal: 19.90,
-      trimestral: 24.90,
-      semestral: 44.90,
-      anual: 79.90
+      trimestral: 49.90,
+      semestral: 89.90,
+      anual: 159.90
     };
 
-    const price = prices[plan] || 24.90;
+    const price = prices[plan] || 49.90;
 
-    // Se não tiver Mercado Pago configurado, retorna simulação
-    if (!process.env.MP_ACCESS_TOKEN) {
-      console.log('⚠️ Usando modo simulação');
-      return res.json({
-        sucesso: true,
-        simulado: true,
-        id: 'SIMULADO_' + Date.now(),
-        init_point: 'https://mercadopago.com.br/teste'
-      });
-    }
+    // Verificar se está em ambiente de teste (sandbox)
+    const isSandbox = process.env.NODE_ENV !== 'production' || true; // Forçar sandbox para testes
+    
+    // Configurar Mercado Pago
+    mercadopago.configure({
+      access_token: process.env.MP_ACCESS_TOKEN,
+      sandbox: isSandbox
+    });
 
+    // Criar preferência de pagamento
     const preference = {
       items: [{
         title: `Plano Karaokê ${plan}`,
@@ -187,7 +193,9 @@ app.post('/api/criar-pagamento', async (req, res) => {
         currency_id: 'BRL',
         unit_price: price
       }],
-      payer: { email },
+      payer: { 
+        email: email 
+      },
       back_urls: {
         success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
         failure: 'https://karaoke-multiplayer.pages.dev/erro.html',
@@ -195,25 +203,37 @@ app.post('/api/criar-pagamento', async (req, res) => {
       },
       auto_return: 'approved',
       notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-      external_reference: JSON.stringify({ email, plan })
+      external_reference: JSON.stringify({ 
+        email: email, 
+        plan: plan,
+        timestamp: Date.now()
+      })
     };
 
+    console.log('📤 Enviando para Mercado Pago...');
+    
     const response = await mercadopago.preferences.create(preference);
     
-    console.log('✅ Pagamento criado:', response.body.id);
+    console.log('✅ Pagamento criado com ID:', response.body.id);
+    console.log('🔗 Link de pagamento:', response.body.sandbox_init_point || response.body.init_point);
 
+    // Retornar o link apropriado (sandbox ou produção)
     res.json({
       sucesso: true,
       id: response.body.id,
-      init_point: response.body.init_point
+      init_point: isSandbox ? response.body.sandbox_init_point : response.body.init_point,
+      sandbox: isSandbox
     });
 
   } catch (error) {
-    console.error('❌ Payment error:', error);
+    console.error('❌ ERRO DETALHADO:');
+    console.error('Mensagem:', error.message);
+    console.error('Stack:', error.stack);
+    
     res.status(500).json({ 
       sucesso: false, 
-      erro: 'Erro no pagamento',
-      detalhe: error.message 
+      erro: 'Erro ao processar pagamento',
+      detalhe: error.message
     });
   }
 });
