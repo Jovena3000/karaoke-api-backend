@@ -145,6 +145,64 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ erro: 'Erro interno' });
   }
 });
+// ================= SIMULAÇÃO DE PAGAMENTO (SEM MERCADO PAGO) =================
+app.post('/api/simular-pagamento', async (req, res) => {
+  setCors(res);
+  
+  try {
+    const { plan, email } = req.body;
+    
+    console.log('🎲 SIMULAÇÃO DE PAGAMENTO:', { plan, email });
+
+    if (!plan || !email) {
+      return res.status(400).json({ 
+        sucesso: false, 
+        erro: 'Plano e email são obrigatórios' 
+      });
+    }
+
+    // Gerar senha temporária
+    const senhaTemporaria = Math.random().toString(36).slice(-8);
+    const hash = await bcrypt.hash(senhaTemporaria, 10);
+
+    // Criar usuário diretamente no banco
+    const { error } = await supabase
+      .from('usuarios')
+      .insert([{
+        email: email,
+        senha_hash: hash,
+        nome: email.split('@')[0],
+        plano: plan,
+        status: 'ativo'
+      }]);
+
+    if (error) {
+      console.error('Erro ao criar usuário:', error);
+      return res.status(500).json({ 
+        sucesso: false, 
+        erro: 'Erro ao criar usuário' 
+      });
+    }
+
+    console.log(`✅ USUÁRIO CRIADO: ${email} | SENHA: ${senhaTemporaria}`);
+
+    res.json({
+      sucesso: true,
+      simulado: true,
+      mensagem: 'Pagamento simulado com sucesso!',
+      email: email,
+      senha: senhaTemporaria,
+      plano: plan
+    });
+
+  } catch (error) {
+    console.error('Erro na simulação:', error);
+    res.status(500).json({ 
+      sucesso: false, 
+      erro: 'Erro na simulação' 
+    });
+  }
+});
 // ================= PAYMENT (VERSÃO CORRIGIDA) =================
 app.post('/api/criar-pagamento', async (req, res) => {
   setCors(res);
