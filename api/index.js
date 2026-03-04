@@ -8,6 +8,16 @@ const mercadopago = require('mercadopago');
 const app = express();
 app.use(express.json());
 
+app.use(cors({
+  origin: [
+    'https://karaoke-multiplayer.pages.dev',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080'
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true
+}));
+
 // ================= CONFIG =================
 const supabase = createClient(
   process.env.SUPABASE_URL,
