@@ -1,3 +1,4 @@
+const cors = require('cors');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -6,30 +7,6 @@ const mercadopago = require('mercadopago');
 
 const app = express();
 app.use(express.json());
-
-// ================= CORS CONFIG (ÚNICO) =================
-app.use((req, res, next) => {
-    const allowedOrigins = [
-        'https://karaoke-multiplayer.pages.dev',
-        'http://localhost:8080',
-        'http://127.0.0.1:8080'
-    ];
-    
-    const origin = req.headers.origin;
-    if (allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    }
-    
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    
-    next();
-});
 
 // ================= CONFIG =================
 const supabase = createClient(
