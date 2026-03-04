@@ -241,40 +241,43 @@ app.post('/api/criar-pagamento', async (req, res) => {
 // ================= WEBHOOK =================
 app.post('/api/webhook', async (req, res) => {
   console.log('📩 Webhook recebido:', req.body);
-  
-  const { type, data } = req.body;
-  
-  if (type === 'payment') {
-    const paymentId = data.id;
-    console.log(`💰 Pagamento ${paymentId} recebido`);
-    
-    try {
-      const payment = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
-      }).then(res => res.json());
 
-      if (payment.status === 'approved') {
-        const { email, plan } = JSON.parse(payment.external_reference);
-        
-        const senhaTemporaria = Math.random().toString(36).slice(-8);
-        const hash = await bcrypt.hash(senhaTemporaria, 10);
+  try {
+    const paymentId = req.body?.data?.id;
 
-        await supabase.from('usuarios').insert([{
-          email,
-          senha_hash: hash,
-          nome: email.split('@')[0],
-          plano: plan,
-          status: 'ativo'
-        }]);
-
-        console.log(`✅ Usuário ${email} criado com senha: ${senhaTemporaria}`);
-        // TODO: Enviar e-mail com a senha
-      }
-    } catch (err) {
-      console.error('Erro ao processar webhook:', err);
+    if (!paymentId) {
+      console.log('⚠️ Sem paymentId');
+      return res.status(200).json({ ignored: true });
     }
+
+    const paymentResponse = await mercadopago.payment.findById(paymentId);
+    const payment = paymentResponse.body;
+
+    if (payment.status !== 'approved') {
+      console.log('⏳ Pagamento não aprovado:', payment.status);
+      return res.status(200).json({ ok: true });
+    }
+
+    const { email, plan } = JSON.parse(payment.external_reference);
+
+    const senhaTemporaria = Math.random().toString(36).slice(-8);
+    const hash = await bcrypt.hash(senhaTemporaria, 10);
+
+    await supabase
+      .from('usuarios')
+      .update({
+        senha_hash: hash,
+        plano: plan,
+        status: 'ativo'
+      })
+      .eq('email', email);
+
+    console.log(`✅ Usuário ${email} ativado`);
+
+  } catch (err) {
+    console.error('❌ Erro webhook:', err);
   }
-  
+
   res.status(200).json({ received: true });
 });
 
