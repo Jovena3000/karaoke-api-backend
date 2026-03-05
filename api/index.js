@@ -22,8 +22,8 @@ app.use(cors({
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "SEUEMAIL@gmail.com",
-    pass: "SENHA_DE_APP_GOOGLE"
+    user: "dominio3000@gmail.com",
+    pass: "vwtv iiai zagc eqie"
   }
 });
 // ================= CONFIG =================
