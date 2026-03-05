@@ -35,7 +35,7 @@ async function simularAprovacao() {
   try {
     // 1️⃣ Gerar senha temporária
     const senhaTemporaria = Math.random().toString(36).slice(-8);
-    console.log('🔑 Senha temporária gerada:', senh aTemporaria);
+    console.log('🔑 Senha temporária gerada:', senhaTemporaria);
 
     // 2️⃣ Criar hash da senha
     const hash = await bcrypt.hash(senhaTemporaria, 10);
