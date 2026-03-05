@@ -189,7 +189,8 @@ app.post('/api/criar-pagamento', async (req, res) => {
         unit_price: price
       }],
       payer: { 
-        email: email 
+        email: email
+        name: "Cliente Karaoke"
       },
       back_urls: {
         success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
@@ -197,10 +198,11 @@ app.post('/api/criar-pagamento', async (req, res) => {
         pending: 'https://karaoke-multiplayer.pages.dev/pendente.html'
       },
       auto_return: 'approved',
-      notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-     external_reference: email + "|" + plan
-    };
-
+      notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook/',
+     external_reference: JSON.stringify({
+  email,
+  plan
+})
     console.log('📤 Enviando para Mercado Pago...');
     
     const response = await mercadopago.preferences.create(preference);
