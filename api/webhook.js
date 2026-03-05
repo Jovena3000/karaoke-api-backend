@@ -1,112 +1,85 @@
 import mercadopago from 'mercadopago';
 import bcrypt from 'bcryptjs';
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend'; // ou outro serviço de e-mail
 import { createClient } from '@supabase/supabase-js';
-
-mercadopago.configure({
-  access_token: process.env.MP_ACCESS_TOKEN
-});
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  }
+mercadopago.configure({
+  access_token: process.env.MP_ACCESS_TOKEN
 });
 
-function gerarSenha(tamanho = 8) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  let senha = '';
-  for (let i = 0; i < tamanho; i++) {
-    senha += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return senha;
-}
+// EMAIL: serviço Resend (melhor para Vercel)
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export default async function handler(req, res) {
   try {
-    console.log('🔥 WEBHOOK CHAMADO');
-    console.log('BODY RECEBIDO:', JSON.stringify(req.body));
-
     if (req.method !== 'POST') {
       return res.status(200).end();
     }
 
-    // 🔒 Blindagem total do payload
-    const paymentId =
-      req.body?.data?.id ||
-      req.query?.id ||
-      null;
-
+    // Pega paymentId mesmo que venha em formatos variados
+    const paymentId = req.body?.data?.id || req.body?.id;
     if (!paymentId) {
-      console.log('⚠️ Webhook sem paymentId, ignorado');
-      return res.status(200).json({ ignorado: true });
+      console.log('⚠️ Webhook sem paymentId');
+      return res.status(200).end();
     }
 
-    // 🔍 Busca pagamento no Mercado Pago
+    // Busca pagamento no Mercado Pago
     const paymentResponse = await mercadopago.payment.findById(paymentId);
     const payment = paymentResponse.body;
 
+    // Somente processa se aprovado
     if (payment.status !== 'approved') {
-      console.log('⏳ Pagamento não aprovado:', payment.status);
-      return res.status(200).json({ status: payment.status });
+      console.log('Pagamento não aprovado:', payment.status);
+      return res.status(200).end();
     }
 
-    if (!payment.external_reference) {
-      throw new Error('external_reference ausente');
-    }
+    // Pega email e plano
+    const { email, plan } = JSON.parse(payment.external_reference);
 
-    // external_reference: user_123_plano_mensal
-    const partes = payment.external_reference.split('_');
-    const userId = partes[1];
-    const plano = partes[3];
+    // Gera senha temporária
+    const senhaTemporaria = Math.random().toString(36).slice(-8);
+    const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
 
-    const diasPlano = plano === 'trimestral' ? 90 : 30;
-    const dataExpiracao = new Date();
-    dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
-
-    const senha = gerarSenha();
-    const senhaHash = await bcrypt.hash(senha, 10);
-
-    const { data: usuario, error } = await supabase
+    // Atualiza usuário existente no Supabase
+    const { error } = await supabase
       .from('usuarios')
       .update({
-        status: 'ativo',
         senha_hash: senhaHash,
-        data_expiracao: dataExpiracao.toISOString()
+        plano: plan,
+        status: 'ativo',
+        data_expiracao: new Date(new Date().setDate(new Date().getDate() + (plan === 'mensal' ? 30 : 90)))
       })
-      .eq('id', userId)
-      .select()
-      .single();
+      .eq('email', email);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Erro ao atualizar usuário no Supabase:', error);
+    }
 
-    await transporter.sendMail({
-      from: `"Karaokê Multiplayer" <${process.env.SMTP_USER}>`,
-      to: usuario.email,
-      subject: '🎤 Acesso liberado - Karaokê Multiplayer',
+    // Envia e-mail com a senha
+    await resend.emails.send({
+      from: 'Karaokê Multiplayer <onboarding@seu-dominio.com>',
+      to: email,
+      subject: '🎤 Sua conta Karaokê Multiplayer está ativa!',
       html: `
-        <h2>Pagamento confirmado!</h2>
-        <p><strong>Email:</strong> ${usuario.email}</p>
-        <p><strong>Senha:</strong> ${senha}</p>
-        <p><strong>Plano:</strong> ${plano}</p>
-        <p><strong>Válido até:</strong> ${dataExpiracao.toLocaleDateString('pt-BR')}</p>
+        <h2>Olá!</h2>
+        <p>Seu pagamento foi aprovado e sua conta já está ativa.</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Senha:</strong> ${senhaTemporaria}</p>
+        <p>Faça login em:</p>
+        <a href="https://karaoke-multiplayer.pages.dev/login.html">https://karaoke-multiplayer.pages.dev/login.html</a>
       `
     });
 
-    console.log('✅ Usuário ativado com sucesso');
-    return res.status(200).json({ sucesso: true });
+    console.log(`📧 Email enviado para ${email}`);
 
+    return res.status(200).json({ sucesso: true });
   } catch (err) {
     console.error('❌ ERRO NO WEBHOOK:', err);
-    return res.status(200).json({ erro: true });
+    return res.status(500).json({ erro: 'Erro interno webhook' });
   }
 }
