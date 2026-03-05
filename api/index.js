@@ -212,7 +212,11 @@ app.post('/api/criar-pagamento', async (req, res) => {
     res.json({
       sucesso: true,
       id: response.body.id,
-      init_point: isSandbox ? response.body.sandbox_init_point : response.body.init_point,
+      res.json({
+  sucesso: true,
+  id: response.body.id,
+  init_point: response.body.init_point
+});
       sandbox: isSandbox
     });
 
