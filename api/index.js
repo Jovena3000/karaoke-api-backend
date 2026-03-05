@@ -248,9 +248,8 @@ app.post('/api/webhook', async (req, res) => {
       console.log('⏳ Pagamento não aprovado:', payment.status);
       return res.status(200).json({ ok: true });
     }
-
-    const { email, plan } = JSON.parse(payment.external_reference);
-
+    const [email, plan] = payment.external_reference.split("|");
+    
     // Buscar nome do usuário no banco
     const { data: usuario } = await supabase
       .from('usuarios')
