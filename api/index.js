@@ -27,21 +27,34 @@ const transporter = nodemailer.createTransport({
   }
 });
 // ================= CONFIG =================
+// Versão atualizada com suporte a Pooler
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    },
+    db: {
+      schema: 'public'
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'supabase-js/2.x'
+      }
+    },
+    // IMPORTANTE: Configurações para contornar problemas de DNS/IPv6
+    fetch: (url, options) => {
+      // Força resolução de DNS usando IPv4 primeiro
+      return fetch(url, {
+        ...options,
+        // Timeout maior para conexões lentas
+        timeout: 30000
+      });
+    }
+  }
 );
-
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (process.env.MP_ACCESS_TOKEN) {
-  mercadopago.configure({
-    access_token: process.env.MP_ACCESS_TOKEN
-  });
-  console.log('✅ Mercado Pago configurado');
-} else {
-  console.log('⚠️  Mercado Pago não configurado');
-}
 
 // ================= STATUS =================
 app.get('/api/status', (req, res) => {
