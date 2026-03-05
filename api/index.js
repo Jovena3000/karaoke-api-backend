@@ -19,7 +19,13 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
   credentials: true
 }));
-
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "SEUEMAIL@gmail.com",
+    pass: "SENHA_DE_APP_GOOGLE"
+  }
+});
 // ================= CONFIG =================
 const supabase = createClient(
   process.env.SUPABASE_URL,
