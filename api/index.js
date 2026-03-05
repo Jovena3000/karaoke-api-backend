@@ -198,11 +198,7 @@ app.post('/api/criar-pagamento', async (req, res) => {
       },
       auto_return: 'approved',
       notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-      external_reference: JSON.stringify({ 
-        email: email, 
-        plan: plan,
-        timestamp: Date.now()
-      })
+     external_reference: email + "|" + plan
     };
 
     console.log('📤 Enviando para Mercado Pago...');
