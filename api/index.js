@@ -233,7 +233,7 @@ app.post('/api/criar-pagamento', async (req, res) => {
   }
 });
 
-// ================= WEBHOOK =================
+// ================= WEBHOOK CORRIGIDO =================
 app.post('/api/webhook', async (req, res) => {
   console.log('📩 Webhook recebido:', req.body);
 
@@ -255,6 +255,13 @@ app.post('/api/webhook', async (req, res) => {
 
     const { email, plan } = JSON.parse(payment.external_reference);
 
+    // Buscar nome do usuário no banco
+    const { data: usuario } = await supabase
+      .from('usuarios')
+      .select('nome')
+      .eq('email', email)
+      .single();
+
     const senhaTemporaria = Math.random().toString(36).slice(-8);
     const hash = await bcrypt.hash(senhaTemporaria, 10);
 
@@ -268,6 +275,93 @@ app.post('/api/webhook', async (req, res) => {
       .eq('email', email);
 
     console.log(`✅ Usuário ${email} ativado`);
+
+    // ✅ AGORA ENVIA O E-MAIL
+    try {
+      // Tabela de preços para exibir no e-mail
+      const prices = {
+        mensal: 19.90,
+        trimestral: 49.90,
+        semestral: 89.90,
+        anual: 159.90
+      };
+      
+      await transporter.sendMail({
+        from: '"Karaokê Multiplayer" <dominio3000@gmail.com>',
+        to: email, // E-mail do cliente
+        subject: '✅ Pagamento Confirmado - Acesso Liberado!',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+              .info-box { background: white; padding: 15px; border-radius: 5px; margin: 10px 0; }
+              .code { background: #e8f5e9; padding: 15px; text-align: center; font-size: 24px; font-family: monospace; border-radius: 5px; color: #2e7d32; }
+              .footer { text-align: center; padding: 15px; color: #666; font-size: 12px; }
+              .button { background: #4CAF50; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>🎤 Pagamento Confirmado!</h1>
+                <p>Seu acesso premium está liberado</p>
+              </div>
+              
+              <div class="content">
+                <h2>Olá ${usuario?.nome || 'Cliente'}!</h2>
+                <p>Recebemos a confirmação do seu pagamento com sucesso. Aqui estão os detalhes:</p>
+                
+                <div class="info-box">
+                  <p><strong>📋 Plano:</strong> Plano ${plan}</p>
+                  <p><strong>💰 Valor:</strong> R$ ${prices[plan]?.toFixed(2) || '49,90'}</p>
+                  <p><strong>🆔 ID da Transação:</strong> ${paymentId}</p>
+                  <p><strong>📅 Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
+                </div>
+
+                <h3>🔑 SUAS CREDENCIAIS DE ACESSO</h3>
+                <div class="info-box">
+                  <p><strong>📧 E-mail:</strong> ${email}</p>
+                  <p><strong>🔐 Senha temporária:</strong> <span class="code">${senhaTemporaria}</span></p>
+                </div>
+                
+                <p style="color: #e67e22;"><strong>⚠️ Importante:</strong> Recomendamos trocar sua senha após o primeiro acesso.</p>
+                
+                <div style="text-align: center;">
+                  <a href="https://karaoke-multiplayer.pages.dev/login" class="button">
+                    ACESSAR KARAOKÊ PREMIUM
+                  </a>
+                </div>
+                
+                <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                  <strong>Como acessar:</strong><br>
+                  1. Use o e-mail e senha acima para fazer login<br>
+                  2. Na primeira vez, você pode trocar sua senha<br>
+                  3. Pronto! Todo conteúdo premium estará liberado
+                </p>
+              </div>
+              
+              <div class="footer">
+                <p>Enviamos este e-mail porque seu pagamento foi processado com sucesso.</p>
+                <p>Precisa de ajuda? Responda este e-mail ou entre em contato pelo suporte.</p>
+                <p>© 2024 Karaokê Multiplayer. Todos os direitos reservados.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      });
+      
+      console.log(`📧 E-mail enviado para ${email}`);
+      
+    } catch (emailError) {
+      console.error('❌ Erro ao enviar e-mail:', emailError);
+      // Não interrompe o fluxo mesmo se e-mail falhar
+    }
 
   } catch (err) {
     console.error('❌ Erro webhook:', err);
