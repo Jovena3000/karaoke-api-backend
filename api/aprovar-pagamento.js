@@ -17,21 +17,12 @@ const pool = new Pool({
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "dominio3000@gmail.com",
-    pass: "vwtv iiai zagc eqie"
-  }
+  user: process.env.EMAIL_USER,
+  pass: process.env.EMAIL_PASS
+}
 });
 
-// Dados do usuário que precisa receber o acesso
-const dadosSimulacao = {
-  email: "dominio3002@gmail.com",
-  nome: "Jovenil Silva",
-  plano: "trimestral",
-  valor: 49.90,
-  idTransacao: "1345222337"
-};
-
-async function simularAprovacao() {
+async function aprovarPagamento(dados) {
   try {
     // 1️⃣ Gerar senha temporária
     const senhaTemporaria = Math.random().toString(36).slice(-8);
@@ -45,7 +36,7 @@ async function simularAprovacao() {
     console.log('📡 Verificando usuário no banco...');
     const existe = await pool.query(
       'SELECT email FROM usuarios WHERE email = $1',
-      [dadosSimulacao.email]
+      [dados.email]
     );
 
     let resultado;
@@ -56,7 +47,7 @@ async function simularAprovacao() {
          SET senha_hash = $1, plano = $2, status = $3 
          WHERE email = $4 
          RETURNING email, nome, plano, status`,
-        [hash, dadosSimulacao.plano, 'ativo', dadosSimulacao.email]
+        [hash, dados.plano, 'ativo', dados.email]
       );
       console.log('✅ Usuário ATUALIZADO com sucesso!');
     } else {
@@ -65,7 +56,7 @@ async function simularAprovacao() {
         `INSERT INTO usuarios (email, nome, senha_hash, plano, status) 
          VALUES ($1, $2, $3, $4, $5) 
          RETURNING email, nome, plano, status`,
-        [dadosSimulacao.email, dadosSimulacao.nome, hash, dadosSimulacao.plano, 'ativo']
+        [dados.email, dados.nome, hash, dados.plano, 'ativo']
       );
       console.log('✅ Novo usuário CRIADO com sucesso!');
     }
@@ -77,7 +68,7 @@ async function simularAprovacao() {
     
     const info = await transporter.sendMail({
       from: '"Karaokê Multiplayer" <dominio3000@gmail.com>',
-      to: dadosSimulacao.email,
+      to: dados.email,
       subject: '✅ Pagamento Confirmado - Acesso Liberado!',
       html: `
         <!DOCTYPE html>
@@ -103,17 +94,17 @@ async function simularAprovacao() {
             </div>
             
             <div class="content">
-              <h2>Olá ${dadosSimulacao.nome}!</h2>
+              <h2>Olá ${dados.nome}!</h2>
               <p>Recebemos a confirmação do seu pagamento com sucesso. Aqui estão os detalhes da sua compra:</p>
               
-              <p><strong>📋 Plano:</strong> Plano ${dadosSimulacao.plano.charAt(0).toUpperCase() + dadosSimulacao.plano.slice(1)}</p>
-              <p><strong>💰 Valor:</strong> R$ ${dadosSimulacao.valor.toFixed(2)}</p>
-              <p><strong>🆔 ID da Transação:</strong> ${dadosSimulacao.idTransacao}</p>
+              <p><strong>📋 Plano:</strong> Plano ${dados.plano.charAt(0).toUpperCase() + dados.plano.slice(1)}</p>
+              <p><strong>💰 Valor:</strong> R$ ${dados.valor.toFixed(2)}</p>
+              <p><strong>🆔 ID da Transação:</strong> ${dados.idTransacao}</p>
               <p><strong>📅 Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
               
               <div class="credential-box">
                 <h3 style="margin-top: 0;">🔑 SUAS CREDENCIAIS DE ACESSO</h3>
-                <p><strong>E-mail:</strong> ${dadosSimulacao.email}</p>
+                <p><strong>E-mail:</strong> ${dados.email}</p>
                 <p><strong>Senha temporária:</strong></p>
                 <div class="senha">${senhaTemporaria}</div>
                 <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
@@ -140,10 +131,10 @@ async function simularAprovacao() {
     
     // 5️⃣ Mostrar resumo final
     console.log('\n📊 ===== RESUMO DA SIMULAÇÃO =====');
-    console.log(`👤 Usuário: ${dadosSimulacao.email}`);
+    console.log(`👤 Usuário: ${dados.email}`);
     console.log(`🔑 Senha: ${senhaTemporaria}`);
-    console.log(`📋 Plano: ${dadosSimulacao.plano}`);
-    console.log(`💰 Valor: R$ ${dadosSimulacao.valor}`);
+    console.log(`📋 Plano: ${dados.plano}`);
+    console.log(`💰 Valor: R$ ${dados.valor}`);
     console.log(`📧 E-mail enviado: SIM`);
     console.log(`🔗 Link de login: https://karaoke-multiplayer.pages.dev/login`);
     console.log('================================\n');
@@ -159,5 +150,5 @@ async function simularAprovacao() {
   }
 }
 
-// Executar a simulação
-simularAprovacao();
+// Executar aprovarPagamento
+module.exports = aprovarPagamento;
