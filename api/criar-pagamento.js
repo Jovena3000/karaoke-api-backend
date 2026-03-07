@@ -66,7 +66,7 @@ module.exports = async function handler(req, res) {
 
       auto_return: "approved",
 
-      notification_url: "https://karaoke-api-backend2-omega.vercel.app/api/webhook",
+      notification_url: "https://karaoke-api-backend3-omega.vercel.app/api/webhook",
 
       external_reference: JSON.stringify({
         email,
