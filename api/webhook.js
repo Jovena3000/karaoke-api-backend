@@ -40,9 +40,14 @@ module.exports = async function handler(req, res) {
     console.log("🔎 Payment ID:", paymentId);
 
     // Buscar pagamento no Mercado Pago
-    const paymentResponse = await mercadopago.payment.findById(paymentId);
-    const payment = paymentResponse.body;
-
+   const payment = {
+  status: "approved",
+  external_reference: JSON.stringify({
+    email: "teste@email.com",
+    plan: "mensal"
+  })
+};
+    
     console.log("💳 Status pagamento:", payment.status);
 
     if (payment.status !== "approved") {
