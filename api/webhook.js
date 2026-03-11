@@ -149,7 +149,7 @@ module.exports = async function handler(req, res) {
 
       await resend.emails.send({
         from: "Karaokê Multiplayer <onboarding@resend.dev>",
-        to: "delivered+dominio3003@resend.dev",
+        to: email,
         subject: "🎤 Sua conta Karaokê Multiplayer está ativa!",
         html: `
         <div style="font-family: Arial; max-width:600px; margin:auto">
