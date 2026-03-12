@@ -5,13 +5,32 @@ mercadopago.configure({
 });
 
 module.exports = async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "https://karaokemultiplayer.com.br");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // ✅ CORS atualizado para aceitar múltiplos domínios
+  const allowedOrigins = [
+    "https://karaoke-multiplayer.pages.dev",
+    "https://karaokemultiplayer.com.br",
+    "https://www.karaokemultiplayer.com.br"
+  ];
 
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ erro: "Método não permitido" });
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    // Fallback para o domínio principal
+    res.setHeader("Access-Control-Allow-Origin", "https://karaokemultiplayer.com.br");
+  }
+  
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  // Responder ao preflight (OPTIONS)
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ erro: "Método não permitido" });
+  }
 
   try {
     const { plan, email } = req.body;
@@ -49,13 +68,13 @@ module.exports = async function handler(req, res) {
         plan,
         timestamp: Date.now() 
       }),
-      // 🔧 COMENTE as back_urls temporariamente para testar
-      // back_urls: {
-      //   success: "https://karaokemultiplayer.com.br/pagamento-sucesso",
-      //   failure: "https://karaokemultiplayer.com.br/pagamento-falha",
-      //   pending: "https://karaokemultiplayer.com.br/pagamento-pendente"
-      // },
-      // auto_return: "approved", // ← Comente também
+      // ✅ URLs atualizadas para o novo domínio
+      back_urls: {
+        success: "https://karaokemultiplayer.com.br/pagamento-sucesso",
+        failure: "https://karaokemultiplayer.com.br/pagamento-falha",
+        pending: "https://karaokemultiplayer.com.br/pagamento-pendente"
+      },
+      auto_return: "approved",
       notification_url: "https://karaoke-api-backend3.vercel.app/api/webhook"
     };
 
