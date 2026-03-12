@@ -5,7 +5,8 @@ mercadopago.configure({
 });
 
 module.exports = async function handler(req, res) {
-  // ✅ CORS atualizado para aceitar múltiplos domínios
+
+  // 🌐 Domínios permitidos
   const allowedOrigins = [
     "https://karaoke-multiplayer.pages.dev",
     "https://karaokemultiplayer.com.br",
@@ -13,17 +14,18 @@ module.exports = async function handler(req, res) {
   ];
 
   const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
+
+  if (origin && allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
-    // Fallback para o domínio principal
     res.setHeader("Access-Control-Allow-Origin", "https://karaokemultiplayer.com.br");
   }
-  
+
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  // Responder ao preflight (OPTIONS)
+  // 🔵 Resposta para preflight CORS
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -33,12 +35,16 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { plan, email } = req.body;
+
+    const { plan, email } = req.body || {};
 
     if (!plan || !email) {
-      return res.status(400).json({ erro: "Plano e email obrigatórios" });
+      return res.status(400).json({
+        erro: "Plano e email obrigatórios"
+      });
     }
 
+    // 💰 Tabela de preços
     const prices = {
       mensal: 24.90,
       trimestral: 49.90,
@@ -46,10 +52,15 @@ module.exports = async function handler(req, res) {
       anual: 159.90
     };
 
-    const price = prices[plan] || 24.90;
+    if (!prices[plan]) {
+      return res.status(400).json({
+        erro: "Plano inválido"
+      });
+    }
 
-    // Log para depuração
-    console.log("📦 Criando preferência para:", { plan, email, price });
+    const price = prices[plan];
+
+    console.log("📦 Criando pagamento:", { email, plan, price });
 
     const preference = {
       items: [
@@ -60,31 +71,35 @@ module.exports = async function handler(req, res) {
           unit_price: price
         }
       ],
+
       payer: {
         email: email
       },
-      external_reference: JSON.stringify({ 
-        email, 
-        plan,
-        timestamp: Date.now() 
+
+      external_reference: JSON.stringify({
+        email: email,
+        plan: plan,
+        created_at: Date.now()
       }),
-      // ✅ URLs atualizadas para o novo domínio
+
       back_urls: {
         success: "https://karaokemultiplayer.com.br/pagamento-sucesso",
         failure: "https://karaokemultiplayer.com.br/pagamento-falha",
         pending: "https://karaokemultiplayer.com.br/pagamento-pendente"
       },
+
       auto_return: "approved",
-      notification_url: "https://karaoke-api-backend3.vercel.app/api/webhook"
+
+      notification_url:
+        "https://karaoke-api-backend3.vercel.app/api/webhook"
     };
 
-    console.log("📦 Enviando preferência:", JSON.stringify(preference, null, 2));
-    
+    console.log("📤 Enviando preferência para Mercado Pago");
+
     const response = await mercadopago.preferences.create(preference);
-    
+
     console.log("✅ Preferência criada:", response.body.id);
-    console.log("🔗 Link:", response.body.init_point);
-    
+
     return res.status(200).json({
       sucesso: true,
       id: response.body.id,
@@ -92,10 +107,13 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error("❌ Erro detalhado:", error);
-    return res.status(500).json({ 
-      erro: "Erro interno",
-      detalhe: error.message 
+
+    console.error("❌ Erro ao criar pagamento:", error);
+
+    return res.status(500).json({
+      erro: "Erro interno ao criar pagamento",
+      detalhe: error.message
     });
+
   }
 };
