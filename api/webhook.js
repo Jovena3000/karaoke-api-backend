@@ -169,7 +169,7 @@ module.exports = async function handler(req, res) {
 
         <br>
 
-        <a href="https://karaoke-multiplayer.pages.dev/login.html"
+        <a href="https://karaokemultiplayer.com.br/login.html"
         style="background:#4CAF50;color:white;padding:12px 24px;text-decoration:none;border-radius:5px">
         🔐 Entrar no Karaokê
         </a>
