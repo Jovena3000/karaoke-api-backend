@@ -111,7 +111,7 @@ async function aprovarPagamento(dados) {
               </div>
               
               <div style="text-align: center;">
-                <a href="https://karaoke-multiplayer.pages.dev/login" class="button">ACESSAR KARAOKÊ</a>
+                <a href="https://karaokemultiplayer.com.br/login" class="button">ACESSAR KARAOKÊ</a>
               </div>
               
               <p style="margin-top: 20px;">Qualquer dúvida, responda a este e-mail ou entre em contato com nosso suporte.</p>
@@ -136,7 +136,7 @@ async function aprovarPagamento(dados) {
     console.log(`📋 Plano: ${dados.plano}`);
     console.log(`💰 Valor: R$ ${dados.valor}`);
     console.log(`📧 E-mail enviado: SIM`);
-    console.log(`🔗 Link de login: https://karaoke-multiplayer.pages.dev/login`);
+    console.log(`🔗 Link de login: https://karaokemultiplayer.com.br/login`);
     console.log('================================\n');
 
   } catch (error) {
