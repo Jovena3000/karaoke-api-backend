@@ -6,7 +6,7 @@ mercadopago.configure({
 
 module.exports = async function handler(req, res) {
   // CORS
-  res.setHeader("Access-Control-Allow-Origin", "https://karaoke-multiplayer.pages.dev");
+  res.setHeader("Access-Control-Allow-Origin", "https://karaokemultiplayer.com.br");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -51,9 +51,9 @@ module.exports = async function handler(req, res) {
       }),
       // 🔧 COMENTE as back_urls temporariamente para testar
       // back_urls: {
-      //   success: "https://karaoke-multiplayer.pages.dev/pagamento-sucesso",
-      //   failure: "https://karaoke-multiplayer.pages.dev/pagamento-falha",
-      //   pending: "https://karaoke-multiplayer.pages.dev/pagamento-pendente"
+      //   success: "https://karaokemultiplayer.com.br/pagamento-sucesso",
+      //   failure: "https://karaokemultiplayer.com.br/pagamento-falha",
+      //   pending: "https://karaokemultiplayer.com.br/pagamento-pendente"
       // },
       // auto_return: "approved", // ← Comente também
       notification_url: "https://karaoke-api-backend3.vercel.app/api/webhook"
