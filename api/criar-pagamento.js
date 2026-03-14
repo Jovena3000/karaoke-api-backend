@@ -63,31 +63,32 @@ module.exports = async function handler(req, res) {
     console.log("📦 Criando pagamento:", { email, plan, price, metodo });
 
     // 🟢 FLUXO PARA PIX (retorna QR Code)
-    if (metodo === 'pix') {
-      console.log("💰 Gerando pagamento PIX...");
-      
-      const payment_data = {
-        transaction_amount: price,
-        description: `Plano Karaokê ${plan}`,
-        payment_method_id: 'pix',
-        payer: {
-          email: email
-        }
-      };
-
-      const payment = await mercadopago.payment.create(payment_data);
-      const paymentBody = payment.body;
-
-      console.log("✅ PIX gerado. ID:", paymentBody.id);
-
-      return res.status(200).json({
-        sucesso: true,
-        id: paymentBody.id,
-        qr_code_base64: paymentBody.point_of_interaction.transaction_data.qr_code_base64,
-        qr_code: paymentBody.point_of_interaction.transaction_data.qr_code,
-        ticket_url: paymentBody.point_of_interaction.transaction_data.ticket_url
-      });
+   // 🟢 FLUXO PARA PIX (retorna QR Code REAL)
+if (metodo === 'pix') {
+  console.log("💰 Gerando pagamento PIX...");
+  
+  const payment_data = {
+    transaction_amount: price,
+    description: `Plano Karaokê ${plan}`,
+    payment_method_id: 'pix',
+    payer: {
+      email: email
     }
+  };
+
+  const payment = await mercadopago.payment.create(payment_data);
+  const paymentBody = payment.body;
+
+  console.log("✅ PIX gerado. ID:", paymentBody.id);
+
+  return res.status(200).json({
+    sucesso: true,
+    id: paymentBody.id,
+    qr_code_base64: paymentBody.point_of_interaction.transaction_data.qr_code_base64, // ✅ QR Code real
+    qr_code: paymentBody.point_of_interaction.transaction_data.qr_code, // ✅ Código copia e cola
+    ticket_url: paymentBody.point_of_interaction.transaction_data.ticket_url
+  });
+}
 
     // 🔵 FLUXO PARA CARTÃO (redirecionamento via Checkout Pro)
     console.log("📤 Criando preferência para cartão...");
