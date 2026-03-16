@@ -1,36 +1,42 @@
-const nodemailer = require("nodemailer");
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
 const mercadopago = require('mercadopago');
 const { Resend } = require('resend');
-const resend = new Resend(process.env.RESEND_API_KEY);
+const cors = require('cors');
+const nodemailer = require('nodemailer');
 
+// ================= CONFIGURAÇÃO =================
 const app = express();
 app.use(express.json());
 
+// Configuração CORS
 app.use(cors({
   origin: [
     'https://karaoke-multiplayer.pages.dev',
+    'https://karaokemultiplayer.com.br',
+    'https://www.karaokemultiplayer.com.br',
+    'http://localhost:3000',
     'http://localhost:8080',
     'http://127.0.0.1:8080'
   ],
-  methods: ['GET', 'POST', 'OPTIONS'],
-  credentials: true
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "dominio3000@gmail.com",
-    pass: "vwtv iiai zagc eqie"
-  }
-});
-// ================= CONFIG =================
-// Versão atualizada com suporte a Pooler
+
+// ================= VARIÁVEIS DE AMBIENTE =================
+const JWT_SECRET = process.env.JWT_SECRET || 'seu-segredo-aqui-mude-em-producao';
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+// ================= CONFIGURAÇÃO SUPABASE =================
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
+  SUPABASE_URL,
+  SUPABASE_SERVICE_KEY,
   {
     auth: {
       persistSession: false,
@@ -44,17 +50,31 @@ const supabase = createClient(
         'X-Client-Info': 'supabase-js/2.x'
       }
     },
-    // IMPORTANTE: Configurações para contornar problemas de DNS/IPv6
     fetch: (url, options) => {
-      // Força resolução de DNS usando IPv4 primeiro
       return fetch(url, {
         ...options,
-        // Timeout maior para conexões lentas
         timeout: 30000
       });
     }
   }
 );
+
+// ================= CONFIGURAÇÃO MERCADO PAGO =================
+mercadopago.configure({
+  access_token: MP_ACCESS_TOKEN
+});
+
+// ================= CONFIGURAÇÃO RESEND =================
+const resend = new Resend(RESEND_API_KEY);
+
+// ================= CONFIGURAÇÃO NODEMAILER (FALLBACK) =================
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.GMAIL_USER || "dominio3000@gmail.com",
+    pass: process.env.GMAIL_PASS || "vwtv iiai zagc eqie"
+  }
+});
 
 // ================= STATUS =================
 app.get('/api/status', (req, res) => {
@@ -74,13 +94,18 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ erro: 'Email e senha obrigatórios' });
     }
 
-    const { data: user } = await supabase
+    const { data: user, error } = await supabase
       .from('usuarios')
       .select('*')
       .eq('email', email)
       .single();
 
-    if (!user || !(await bcrypt.compare(senha, user.senha_hash))) {
+    if (error || !user) {
+      return res.status(401).json({ erro: 'Credenciais inválidas' });
+    }
+
+    const senhaValida = await bcrypt.compare(senha, user.senha_hash);
+    if (!senhaValida) {
       return res.status(401).json({ erro: 'Credenciais inválidas' });
     }
 
@@ -89,7 +114,12 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { userId: user.id, email: user.email, plano: user.plano },
+      { 
+        userId: user.id, 
+        email: user.email, 
+        plano: user.plano,
+        nome: user.nome 
+      },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -105,8 +135,8 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ erro: 'Erro interno' });
+    console.error('❌ Login error:', error);
+    res.status(500).json({ erro: 'Erro interno no servidor' });
   }
 });
 
@@ -116,14 +146,15 @@ app.post('/api/auth/register', async (req, res) => {
     const { email, senha, nome, plano } = req.body;
 
     if (!email || !senha || !nome || !plano) {
-      return res.status(400).json({ erro: 'Todos os campos obrigatórios' });
+      return res.status(400).json({ erro: 'Todos os campos são obrigatórios' });
     }
 
+    // Verificar se email já existe
     const { data: existingUser } = await supabase
       .from('usuarios')
       .select('id')
       .eq('email', email)
-      .single();
+      .maybeSingle();
 
     if (existingUser) {
       return res.status(400).json({ erro: 'Email já cadastrado' });
@@ -138,7 +169,8 @@ app.post('/api/auth/register', async (req, res) => {
         senha_hash: senhaHash,
         nome,
         plano,
-        status: 'inativo'
+        status: 'inativo',
+        created_at: new Date().toISOString()
       }]);
 
     if (error) throw error;
@@ -149,24 +181,18 @@ app.post('/api/auth/register', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({ erro: 'Erro interno' });
+    console.error('❌ Register error:', error);
+    res.status(500).json({ erro: 'Erro interno no servidor' });
   }
 });
-// ================= PAYMENT (VERSÃO CORRIGIDA) =================
+
+// ================= CRIAR PAGAMENTO (CORRIGIDO) =================
 app.post('/api/criar-pagamento', async (req, res) => {
-  setCors(res);
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
   try {
-    const { plan, email } = req.body;
+    const { plan, email, metodo } = req.body;
     
-    console.log('📥 Requisição recebida:', { plan, email });
+    console.log('📥 Requisição recebida:', { plan, email, metodo });
 
-    // Validação
     if (!plan || !email) {
       return res.status(400).json({ 
         sucesso: false, 
@@ -174,26 +200,53 @@ app.post('/api/criar-pagamento', async (req, res) => {
       });
     }
 
-    // Tabela de preços dos planos
+    // Tabela de preços CORRIGIDA
     const prices = {
-      mensal: 19.90,
+      mensal: 24.90,      // ← CORRIGIDO (era 19.90)
       trimestral: 49.90,
       semestral: 89.90,
       anual: 159.90
     };
 
-    const price = prices[plan] || 49.90;
+    if (!prices[plan]) {
+      return res.status(400).json({ 
+        sucesso: false, 
+        erro: 'Plano inválido' 
+      });
+    }
 
-    // Verificar se está em ambiente de teste (sandbox)
-    const isSandbox = process.env.NODE_ENV !== 'production' || true; // Forçar sandbox para testes
-    
-    // Configurar Mercado Pago
-    mercadopago.configure({
-      access_token: process.env.MP_ACCESS_TOKEN,
-      sandbox: isSandbox
-    });
+    const price = prices[plan];
 
-    // Criar preferência de pagamento
+    // FLUXO PARA PIX
+    if (metodo === 'pix') {
+      console.log('💰 Gerando pagamento PIX...');
+      
+      const payment_data = {
+        transaction_amount: price,
+        description: `Plano Karaokê ${plan}`,
+        payment_method_id: 'pix',
+        payer: {
+          email: email
+        }
+      };
+
+      const payment = await mercadopago.payment.create(payment_data);
+      const paymentBody = payment.body;
+
+      console.log('✅ PIX gerado. ID:', paymentBody.id);
+
+      return res.json({
+        sucesso: true,
+        id: paymentBody.id,
+        qr_code_base64: paymentBody.point_of_interaction?.transaction_data?.qr_code_base64,
+        qr_code: paymentBody.point_of_interaction?.transaction_data?.qr_code,
+        ticket_url: paymentBody.point_of_interaction?.transaction_data?.ticket_url
+      });
+    }
+
+    // FLUXO PARA CARTÃO
+    console.log('📤 Criando preferência para cartão...');
+
     const preference = {
       items: [{
         title: `Plano Karaokê ${plan}`,
@@ -203,40 +256,33 @@ app.post('/api/criar-pagamento', async (req, res) => {
       }],
       payer: { 
         email: email
-        name: "Cliente Karaoke"
       },
       back_urls: {
-        success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
-        failure: 'https://karaoke-multiplayer.pages.dev/erro.html',
-        pending: 'https://karaoke-multiplayer.pages.dev/pendente.html'
+        success: 'https://karaokemultiplayer.com.br/pagamento-sucesso',
+        failure: 'https://karaokemultiplayer.com.br/erro',
+        pending: 'https://karaokemultiplayer.com.br/pendente'
       },
       auto_return: 'approved',
-      notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook/',
-     external_reference: JSON.stringify({
-  email,
-  plan
-})
-    console.log('📤 Enviando para Mercado Pago...');
+      notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+      external_reference: JSON.stringify({
+        email: email,
+        plan: plan,
+        created_at: Date.now()
+      })
+    };
     
     const response = await mercadopago.preferences.create(preference);
     
-    console.log('✅ Pagamento criado com ID:', response.body.id);
-    console.log('🔗 Link de pagamento:', response.body.sandbox_init_point || response.body.init_point);
+    console.log('✅ Preferência criada. ID:', response.body.id);
 
-    // Retornar o link apropriado (sandbox ou produção)
-    res.json({
+    return res.json({
       sucesso: true,
       id: response.body.id,
-      res.json({
-  sucesso: true,
-  id: response.body.id,
-  init_point: response.body.init_point
-});
-      sandbox: isSandbox
+      init_point: response.body.init_point
     });
 
   } catch (error) {
-    console.error('❌ ERRO DETALHADO:');
+    console.error('❌ Erro detalhado:');
     console.error('Mensagem:', error.message);
     console.error('Stack:', error.stack);
     
@@ -257,7 +303,7 @@ app.post('/api/webhook', async (req, res) => {
 
     if (!paymentId) {
       console.log('⚠️ Sem paymentId');
-      return res.status(200).json({ ignored: true });
+      return res.status(200).json({ received: true });
     }
 
     const paymentResponse = await mercadopago.payment.findById(paymentId);
@@ -265,136 +311,170 @@ app.post('/api/webhook', async (req, res) => {
 
     if (payment.status !== 'approved') {
       console.log('⏳ Pagamento não aprovado:', payment.status);
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ received: true });
     }
-    const [email, plan] = payment.external_reference.split("|");
+
+    // Extrair dados do external_reference
+    let email, plan;
+    try {
+      const externalRef = JSON.parse(payment.external_reference);
+      email = externalRef.email;
+      plan = externalRef.plan;
+    } catch (e) {
+      console.log('⚠️ external_reference não é JSON, tentando split');
+      [email, plan] = payment.external_reference.split('|');
+    }
+
+    if (!email || !plan) {
+      console.log('❌ Não foi possível extrair email/plan');
+      return res.status(200).json({ received: true });
+    }
     
-    // Buscar nome do usuário no banco
+    // Buscar usuário no banco
     const { data: usuario } = await supabase
       .from('usuarios')
-      .select('nome')
+      .select('nome, email')
       .eq('email', email)
-      .single();
+      .maybeSingle();
 
     const senhaTemporaria = Math.random().toString(36).slice(-8);
     const hash = await bcrypt.hash(senhaTemporaria, 10);
 
-    await supabase
-      .from('usuarios')
-      .update({
-        senha_hash: hash,
-        plano: plan,
-        status: 'ativo'
-      })
-      .eq('email', email);
+    if (usuario) {
+      // Usuário existe: atualizar
+      await supabase
+        .from('usuarios')
+        .update({
+          senha_hash: hash,
+          plano: plan,
+          status: 'ativo',
+          updated_at: new Date().toISOString()
+        })
+        .eq('email', email);
+    } else {
+      // Usuário não existe: criar
+      await supabase
+        .from('usuarios')
+        .insert([{
+          email: email,
+          senha_hash: hash,
+          nome: email.split('@')[0],
+          plano: plan,
+          status: 'ativo',
+          created_at: new Date().toISOString()
+        }]);
+    }
 
-    console.log(`✅ Usuário ${email} ativado`);
+    console.log(`✅ Usuário ${email} ativado com plano ${plan}`);
 
-    // ✅ AGORA ENVIA O E-MAIL
+    // ================= ENVIAR E-MAIL =================
     try {
-      // Tabela de preços para exibir no e-mail
       const prices = {
-        mensal: 19.90,
+        mensal: 24.90,
         trimestral: 49.90,
         semestral: 89.90,
         anual: 159.90
       };
       
-      await transporter.sendMail({
-        from: '"Karaokê Multiplayer" <dominio3000@gmail.com>',
-        to: email, // E-mail do cliente
-        subject: '✅ Pagamento Confirmado - Acesso Liberado!',
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-              .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
-              .info-box { background: white; padding: 15px; border-radius: 5px; margin: 10px 0; }
-              .code { background: #e8f5e9; padding: 15px; text-align: center; font-size: 24px; font-family: monospace; border-radius: 5px; color: #2e7d32; }
-              .footer { text-align: center; padding: 15px; color: #666; font-size: 12px; }
-              .button { background: #4CAF50; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>🎤 Pagamento Confirmado!</h1>
-                <p>Seu acesso premium está liberado</p>
-              </div>
-              
-              <div class="content">
-                <h2>Olá ${usuario?.nome || 'Cliente'}!</h2>
-                <p>Recebemos a confirmação do seu pagamento com sucesso. Aqui estão os detalhes:</p>
-                
-                <div class="info-box">
-                  <p><strong>📋 Plano:</strong> Plano ${plan}</p>
-                  <p><strong>💰 Valor:</strong> R$ ${prices[plan]?.toFixed(2) || '49,90'}</p>
-                  <p><strong>🆔 ID da Transação:</strong> ${paymentId}</p>
-                  <p><strong>📅 Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
+      // Tentar enviar com Resend primeiro
+      if (RESEND_API_KEY) {
+        await resend.emails.send({
+          from: 'Karaokê Multiplayer <onboarding@resend.dev>',
+          to: email,
+          subject: '✅ Pagamento Confirmado - Acesso Liberado!',
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+                .info-box { background: white; padding: 15px; border-radius: 5px; margin: 10px 0; }
+                .code { background: #e8f5e9; padding: 15px; text-align: center; font-size: 24px; font-family: monospace; border-radius: 5px; color: #2e7d32; }
+                .button { background: #4CAF50; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>🎤 Pagamento Confirmado!</h1>
+                  <p>Seu acesso premium está liberado</p>
                 </div>
+                
+                <div class="content">
+                  <h2>Olá ${usuario?.nome || email.split('@')[0]}!</h2>
+                  <p>Recebemos a confirmação do seu pagamento com sucesso.</p>
+                  
+                  <div class="info-box">
+                    <p><strong>📋 Plano:</strong> Plano ${plan}</p>
+                    <p><strong>💰 Valor:</strong> R$ ${prices[plan]?.toFixed(2) || '49,90'}</p>
+                    <p><strong>🆔 ID da Transação:</strong> ${paymentId}</p>
+                    <p><strong>📅 Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
+                  </div>
 
-                <h3>🔑 SUAS CREDENCIAIS DE ACESSO</h3>
-                <div class="info-box">
-                  <p><strong>📧 E-mail:</strong> ${email}</p>
-                  <p><strong>🔐 Senha temporária:</strong> <span class="code">${senhaTemporaria}</span></p>
+                  <h3>🔑 SUAS CREDENCIAIS DE ACESSO</h3>
+                  <div class="info-box">
+                    <p><strong>📧 E-mail:</strong> ${email}</p>
+                    <p><strong>🔐 Senha temporária:</strong> <span class="code">${senhaTemporaria}</span></p>
+                  </div>
+                  
+                  <p style="color: #e67e22;"><strong>⚠️ Importante:</strong> Troque sua senha após o primeiro acesso.</p>
+                  
+                  <div style="text-align: center;">
+                    <a href="https://karaokemultiplayer.com.br/login" class="button">
+                      ACESSAR KARAOKÊ PREMIUM
+                    </a>
+                  </div>
                 </div>
                 
-                <p style="color: #e67e22;"><strong>⚠️ Importante:</strong> Recomendamos trocar sua senha após o primeiro acesso.</p>
-                
-                <div style="text-align: center;">
-                  <a href="https://karaoke-multiplayer.pages.dev/login" class="button">
-                    ACESSAR KARAOKÊ PREMIUM
-                  </a>
+                <div style="text-align: center; padding: 15px; color: #666; font-size: 12px;">
+                  <p>© 2026 Karaokê Multiplayer. Todos os direitos reservados.</p>
                 </div>
-                
-                <p style="margin-top: 20px; font-size: 14px; color: #666;">
-                  <strong>Como acessar:</strong><br>
-                  1. Use o e-mail e senha acima para fazer login<br>
-                  2. Na primeira vez, você pode trocar sua senha<br>
-                  3. Pronto! Todo conteúdo premium estará liberado
-                </p>
               </div>
-              
-              <div class="footer">
-                <p>Enviamos este e-mail porque seu pagamento foi processado com sucesso.</p>
-                <p>Precisa de ajuda? Responda este e-mail ou entre em contato pelo suporte.</p>
-                <p>© 2024 Karaokê Multiplayer. Todos os direitos reservados.</p>
-              </div>
-            </div>
-          </body>
-          </html>
-        `
-      });
+            </body>
+            </html>
+          `
+        });
+      } else {
+        // Fallback para nodemailer
+        await transporter.sendMail({
+          from: '"Karaokê Multiplayer" <dominio3000@gmail.com>',
+          to: email,
+          subject: '✅ Pagamento Confirmado - Acesso Liberado!',
+          html: `<p>Olá, seu pagamento foi confirmado! Sua senha é: <b>${senhaTemporaria}</b></p>`
+        });
+      }
       
       console.log(`📧 E-mail enviado para ${email}`);
       
     } catch (emailError) {
       console.error('❌ Erro ao enviar e-mail:', emailError);
-      // Não interrompe o fluxo mesmo se e-mail falhar
     }
+
+    return res.status(200).json({ received: true });
 
   } catch (err) {
     console.error('❌ Erro webhook:', err);
+    return res.status(200).json({ received: true });
   }
-
-  res.status(200).json({ received: true });
 });
 
-// ================= ROOT =================
+// ================= ROTA RAIZ =================
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    message: '🎤 API Karaokê'
+    message: '🎤 API Karaokê Multiplayer',
+    versao: '2.0.0',
+    ambiente: process.env.NODE_ENV || 'development'
   });
 });
 
-// ================= INICIAR SERVIDOR (para desenvolvimento local) =================
+// ================= INICIAR SERVIDOR =================
+const PORT = process.env.PORT || 3000;
+
 if (require.main === module) {
-  const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`\n🚀 Servidor rodando em http://localhost:${PORT}`);
     console.log(`📝 Endpoints disponíveis:`);
