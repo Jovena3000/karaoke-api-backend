@@ -11,20 +11,34 @@ const nodemailer = require('nodemailer');
 const app = express();
 app.use(express.json());
 
-// Configuração CORS
+// Configuração CORS completa
+const allowedOrigins = [
+  'https://karaoke-multiplayer.pages.dev',
+  'https://karaokemultiplayer.com.br',
+  'https://www.karaokemultiplayer.com.br',
+  'http://localhost:3000',
+  'http://localhost:8080',
+  'http://127.0.0.1:8080'
+];
+
 app.use(cors({
-  origin: [
-    'https://karaoke-multiplayer.pages.dev',
-    'https://karaokemultiplayer.com.br',
-    'https://www.karaokemultiplayer.com.br',
-    'http://localhost:3000',
-    'http://localhost:8080',
-    'http://127.0.0.1:8080'
-  ],
+  origin: function (origin, callback) {
+    // Permitir requisições sem origin (apps mobile, Postman, etc)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'A política CORS não permite acesso desta origem.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Responder a todas as requisições OPTIONS (preflight)
+app.options('*', cors());
 
 // ================= VARIÁVEIS DE AMBIENTE =================
 const JWT_SECRET = process.env.JWT_SECRET || 'seu-segredo-aqui-mude-em-producao';
@@ -128,6 +142,7 @@ app.post('/api/auth/login', async (req, res) => {
       sucesso: true,
       token,
       usuario: {
+        id: user.id,
         nome: user.nome,
         email: user.email,
         plano: user.plano
@@ -186,7 +201,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// ================= CRIAR PAGAMENTO (CORRIGIDO) =================
+// ================= CRIAR PAGAMENTO =================
 app.post('/api/criar-pagamento', async (req, res) => {
   try {
     const { plan, email, metodo } = req.body;
@@ -200,9 +215,9 @@ app.post('/api/criar-pagamento', async (req, res) => {
       });
     }
 
-    // Tabela de preços CORRIGIDA
+    // Tabela de preços
     const prices = {
-      mensal: 5,00,      // ← CORRIGIDO (era 19.90)
+      mensal: 5.00,      // ← CORRIGIDO: ponto em vez de vírgula
       trimestral: 49.90,
       semestral: 89.90,
       anual: 159.90
@@ -294,7 +309,7 @@ app.post('/api/criar-pagamento', async (req, res) => {
   }
 });
 
-// ================= WEBHOOK CORRIGIDO =================
+// ================= WEBHOOK =================
 app.post('/api/webhook', async (req, res) => {
   console.log('📩 Webhook recebido:', req.body);
 
@@ -434,7 +449,7 @@ app.post('/api/webhook', async (req, res) => {
                 </div>
               </div>
             </body>
-            </html>
+            <\/html>
           `
         });
       } else {
