@@ -202,7 +202,7 @@ app.post('/api/criar-pagamento', async (req, res) => {
 
     // Tabela de preços CORRIGIDA
     const prices = {
-      mensal: 24.90,      // ← CORRIGIDO (era 19.90)
+      mensal: 1,00,      // ← CORRIGIDO (era 19.90)
       trimestral: 49.90,
       semestral: 89.90,
       anual: 159.90
