@@ -27,10 +27,7 @@ module.exports = async function handler(req, res) {
 
     console.log("📩 Webhook recebido");
 
-    const paymentId =
-      req.body?.data?.id ||
-      req.body?.id ||
-      req.query?.id;
+    const paymentId = req.body?.data?.id || req.body?.id || req.query?.id;
 
     if (!paymentId) {
       console.log("❌ paymentId não encontrado");
@@ -39,14 +36,9 @@ module.exports = async function handler(req, res) {
 
     console.log("🔎 Payment ID:", paymentId);
 
-    // Buscar pagamento no Mercado Pago
-   const payment = {
-  status: "approved",
-  external_reference: JSON.stringify({
-    email: "teste@email.com",
-    plan: "mensal"
-  })
-};
+    // 🔴 CORREÇÃO: Buscar pagamento REAL no Mercado Pago
+    const paymentResponse = await mercadopago.payment.findById(paymentId);
+    const payment = paymentResponse.body;
     
     console.log("💳 Status pagamento:", payment.status);
 
@@ -86,6 +78,8 @@ module.exports = async function handler(req, res) {
     // Gerar senha temporária
     const senhaTemporaria = Math.random().toString(36).slice(-8);
     const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
+    
+    console.log("🔑 Senha hash gerada:", senhaHash.substring(0, 20) + "..."); // Log parcial para debug
 
     // Definir duração do plano
     let diasPlano = 30;
@@ -111,18 +105,23 @@ module.exports = async function handler(req, res) {
     if (usuarioExistente) {
 
       console.log("🔄 Atualizando usuário existente");
+      console.log("🔑 Incluindo senha_hash na atualização");
 
+      // 🔴 CORREÇÃO: Incluir senha_hash no update
       const { error } = await supabase
         .from("usuarios")
         .update({
           plano: plan,
           status: "ativo",
-          data_expiracao: dataExpiracao
+          data_expiracao: dataExpiracao,
+          senha_hash: senhaHash  // ← LINHA ADICIONADA (estava faltando!)
         })
         .eq("email", email);
 
       if (error) {
         console.error("❌ Erro ao atualizar usuário:", error);
+      } else {
+        console.log("✅ Usuário atualizado com sucesso");
       }
 
     } else {
@@ -141,6 +140,8 @@ module.exports = async function handler(req, res) {
 
       if (error) {
         console.error("❌ Erro ao criar usuário:", error);
+      } else {
+        console.log("✅ Usuário criado com sucesso");
       }
     }
 
@@ -197,6 +198,7 @@ module.exports = async function handler(req, res) {
   } catch (err) {
 
     console.error("🔥 Erro no webhook:", err);
+    console.error("📄 Stack:", err.stack);
 
     return res.status(500).json({
       erro: "Erro interno webhook"
