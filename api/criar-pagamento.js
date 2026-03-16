@@ -46,7 +46,7 @@ module.exports = async function handler(req, res) {
 
     // 💰 Tabela de preços
     const prices = {
-      mensal: 24.90,
+      mensal: 1.00,
       trimestral: 49.90,
       semestral: 89.90,
       anual: 159.90
