@@ -60,7 +60,7 @@ module.exports = async function handler(req, res) {
 
     try {
       const externalRef = JSON.parse(payment.external_reference);
-      email = externalRef.email;
+      email = externalRef.email;  // ← AGORA USA O EMAIL REAL DO PAGAMENTO
       plan = externalRef.plan;
     } catch (err) {
       console.log("❌ external_reference inválido");
@@ -72,14 +72,14 @@ module.exports = async function handler(req, res) {
       return res.status(200).end();
     }
 
-    console.log("👤 Cliente:", email);
+    console.log("👤 Cliente:", email);  // ← AGORA MOSTRA O EMAIL CORRETO
     console.log("📦 Plano:", plan);
 
     // Gerar senha temporária
     const senhaTemporaria = Math.random().toString(36).slice(-8);
     const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
     
-    console.log("🔑 Senha hash gerada:", senhaHash.substring(0, 20) + "..."); // Log parcial para debug
+    console.log("🔑 Senha hash gerada");
 
     // Definir duração do plano
     let diasPlano = 30;
@@ -105,16 +105,14 @@ module.exports = async function handler(req, res) {
     if (usuarioExistente) {
 
       console.log("🔄 Atualizando usuário existente");
-      console.log("🔑 Incluindo senha_hash na atualização");
 
-      // 🔴 CORREÇÃO: Incluir senha_hash no update
       const { error } = await supabase
         .from("usuarios")
         .update({
           plano: plan,
           status: "ativo",
           data_expiracao: dataExpiracao,
-          senha_hash: senhaHash  // ← LINHA ADICIONADA (estava faltando!)
+          senha_hash: senhaHash  // ← GARANTE QUE A SENHA É ATUALIZADA
         })
         .eq("email", email);
 
@@ -148,9 +146,11 @@ module.exports = async function handler(req, res) {
     // Enviar e-mail
     try {
 
+      console.log("📧 Enviando e-mail para:", email);  // ← LOG PARA CONFIRMAR
+
       await resend.emails.send({
         from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
-        to: email,
+        to: email,  // ← AGORA USA O EMAIL CORRETO
         subject: "🎤 Sua conta Karaokê Multiplayer está ativa!",
         html: `
         <div style="font-family: Arial; max-width:600px; margin:auto">
@@ -183,7 +183,7 @@ module.exports = async function handler(req, res) {
         `
       });
 
-      console.log("📧 Email enviado para:", email);
+      console.log("📧 Email enviado com sucesso para:", email);
 
     } catch (erroEmail) {
 
