@@ -13,7 +13,6 @@ app.use(express.json());
 
 // Configuração CORS completa
 const allowedOrigins = [
-  'https://karaoke-multiplayer.pages.dev',
   'https://karaokemultiplayer.com.br',
   'https://www.karaokemultiplayer.com.br',
   'http://localhost:3000',
