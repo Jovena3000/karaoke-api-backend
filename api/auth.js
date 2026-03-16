@@ -10,7 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 module.exports = async (req, res) => {
     // Configurar CORS
-    res.setHeader('Access-Control-Allow-Origin', 'https://karaoke-multiplayer.pages.dev');
+    res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
