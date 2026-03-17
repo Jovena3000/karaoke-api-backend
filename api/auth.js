@@ -6,14 +6,27 @@ const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_KEY
 );
+
 const JWT_SECRET = process.env.JWT_SECRET;
 
 module.exports = async (req, res) => {
-    // Configurar CORS
-    res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+    // 🔥 CORS DINÂMICO
+    const allowedOrigins = [
+        'https://karaokemultiplayer.com.br',
+        'https://karaoke-multiplayer.pages.dev'
+    ];
+
+    const origin = req.headers.origin;
+
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    // 🔥 Preflight
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
