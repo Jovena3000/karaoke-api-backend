@@ -29,7 +29,7 @@ app.use(cors({
       const msg = 'A política CORS não permite acesso desta origem.';
       return callback(new Error(msg), false);
     }
-    return callback(null, true);
+    return callback(null, origin);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
