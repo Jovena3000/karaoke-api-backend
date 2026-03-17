@@ -9,14 +9,24 @@ const supabase = createClient(
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://karaoke-multiplayer.pages.dev');
+function setCors(req, res) {
+  const allowedOrigins = [
+    'https://karaokemultiplayer.com.br',
+    'https://karaoke-multiplayer.pages.dev'
+  ];
+
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
 export default async function handler(req, res) {
-  setCors(res);
+  setCors(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -43,23 +53,19 @@ export default async function handler(req, res) {
       return res.status(401).json({ erro: 'Credenciais inválidas' });
     }
 
-    // Verificar se a senha está correta
     const senhaCorreta = await bcrypt.compare(senha, user.senha_hash);
     if (!senhaCorreta) {
       return res.status(401).json({ erro: 'Credenciais inválidas' });
     }
 
-    // Verificar status da conta
     if (user.status !== 'ativo') {
       return res.status(403).json({ erro: 'Pagamento pendente' });
     }
 
-    // Verificar se o plano não expirou (caso tenha data de expiração)
     if (user.data_expiracao && new Date(user.data_expiracao) < new Date()) {
       return res.status(403).json({ erro: 'Plano expirado' });
     }
 
-    // Gerar token JWT
     const token = jwt.sign(
       { 
         userId: user.id, 
