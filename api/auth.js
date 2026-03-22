@@ -14,8 +14,7 @@ module.exports = async (req, res) => {
     // 🔥 CORS DINÂMICO
     const allowedOrigins = [
         'https://karaokemultiplayer.com.br',
-        'https://karaoke-multiplayer.pages.dev'
-    ];
+        ];
 
     const origin = req.headers.origin;
 
