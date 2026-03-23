@@ -3,7 +3,6 @@ module.exports = async function handler(req, res) {
     const allowedOrigins = [
         'https://karaokemultiplayer.com.br',
         'https://www.karaokemultiplayer.com.br',
-        'https://karaoke-multiplayer.pages.dev',
         'http://localhost:3000'
     ];
     
