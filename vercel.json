@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://karaoke-multiplayer.pages.dev"
+          "value": "https://karaokemultiplayer.com.br"
         },
         {
           "key": "Access-Control-Allow-Methods",
