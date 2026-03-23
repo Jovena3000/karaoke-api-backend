@@ -2,7 +2,6 @@
 import { Resend } from 'resend';
 import crypto from 'crypto';
 
-// Usando a mesma configuração dos seus outros e-mails
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export default async function handler(req, res) {
@@ -41,13 +40,13 @@ export default async function handler(req, res) {
         
         console.log(`📧 Solicitação de recuperação para: ${email}`);
         
-        // Gerar token (em produção, você deve salvar no banco)
+        // Gerar token
         const resetToken = crypto.randomBytes(32).toString('hex');
         const resetLink = `https://karaokemultiplayer.com.br/redefinir-senha.html?token=${resetToken}&email=${encodeURIComponent(email)}`;
         
         console.log(`🔗 Link de recuperação: ${resetLink}`);
         
-        // 🔥 ENVIAR E-MAIL USANDO RESEND (mesma configuração dos seus e-mails de compra)
+        // Enviar e-mail
         const { data, error } = await resend.emails.send({
             from: 'Karaokê Multiplayer <naoresponder@karaokemultiplayer.com.br>',
             to: email,
@@ -69,7 +68,7 @@ export default async function handler(req, res) {
                         <h2 style="color: #333;">Recuperação de Senha</h2>
                         
                         <p style="color: #666; line-height: 1.6; margin: 20px 0;">
-                            Você solicitou a recuperação de senha para sua conta. Clique no botão abaixo para redefinir sua senha:
+                            Olá, você solicitou a recuperação de senha para sua conta. Clique no botão abaixo para redefinir sua senha:
                         </p>
                         
                         <div style="text-align: center; margin: 30px 0;">
@@ -80,7 +79,14 @@ export default async function handler(req, res) {
                         </div>
                         
                         <p style="color: #999; font-size: 12px; text-align: center;">
-                            Este link expira em 1 hora. Se você não solicitou, ignore este e-mail.
+                            Se você não solicitou essa recuperação, ignore este e-mail.<br>
+                            Este link expira em 1 hora.
+                        </p>
+                        
+                        <hr style="margin: 20px 0;">
+                        
+                        <p style="color: #999; font-size: 12px; text-align: center;">
+                            © 2026 Karaokê Multiplayer. Todos os direitos reservados.
                         </p>
                     </div>
                 </body>
