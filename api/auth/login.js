@@ -12,8 +12,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 function setCors(req, res) {
   const allowedOrigins = [
     'https://karaokemultiplayer.com.br',
-    'https://karaoke-multiplayer.pages.dev'
-  ];
+];
 
   const origin = req.headers.origin;
 
