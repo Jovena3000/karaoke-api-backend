@@ -6,6 +6,7 @@ const mercadopago = require('mercadopago');
 const { Resend } = require('resend');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // ================= CONFIGURAÇÃO =================
 const app = express();
@@ -15,7 +16,7 @@ app.use(express.json());
 const allowedOrigins = [
   'https://karaokemultiplayer.com.br',
   'https://www.karaokemultiplayer.com.br',
-  'http://localhost:3000',
+    'http://localhost:3000',
   'http://localhost:8080',
   'http://127.0.0.1:8080'
 ];
@@ -184,6 +185,204 @@ app.post('/api/auth/register', async (req, res) => {
     console.error('❌ Register error:', error);
     res.status(500).json({ erro: 'Erro interno no servidor' });
   }
+});
+
+// ================= ESQUECI MINHA SENHA =================
+app.post('/api/auth/esqueci-senha', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        console.log(`📧 Recebido email: ${email}`);
+        
+        if (!email) {
+            return res.status(400).json({ erro: 'Email é obrigatório' });
+        }
+        
+        // Verificar se o usuário existe
+        const { data: user } = await supabase
+            .from('usuarios')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+        
+        if (!user) {
+            return res.json({ 
+                sucesso: true, 
+                mensagem: 'Se o email existir, você receberá um link de recuperação.' 
+            });
+        }
+        
+        // Gerar token único
+        const token = crypto.randomBytes(32).toString('hex');
+        
+        // Salvar token no banco
+        await supabase
+            .from('reset_tokens')
+            .insert([{
+                email: email,
+                token: token,
+                created_at: new Date().toISOString()
+            }]);
+        
+        // Link de recuperação
+        const resetLink = `https://karaokemultiplayer.com.br/redefinir-senha.html?token=${token}&email=${encodeURIComponent(email)}`;
+        
+        console.log(`🔗 Link de recuperação: ${resetLink}`);
+        
+        // ================= ENVIAR E-MAIL =================
+        let emailEnviado = false;
+        let erroEmail = '';
+        
+        // TENTAR COM RESEND PRIMEIRO
+        if (resend) {
+            try {
+                const { data, error } = await resend.emails.send({
+                    from: 'Karaokê Multiplayer <onboarding@resend.dev>',
+                    to: email,
+                    subject: '🔐 Recuperação de Senha - Karaokê Multiplayer',
+                    html: `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <style>
+                                body { font-family: Arial, sans-serif; line-height: 1.6; }
+                                .container { max-width: 500px; margin: 0 auto; padding: 20px; }
+                                .button { background: #FF4D94; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; }
+                                .footer { font-size: 12px; color: #666; margin-top: 20px; text-align: center; }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <h2 style="color: #FF4D94;">🎤 Recuperação de Senha</h2>
+                                <p>Olá, você solicitou a recuperação de senha para sua conta no <strong>Karaokê Multiplayer</strong>.</p>
+                                <p>Clique no botão abaixo para redefinir sua senha:</p>
+                                <div style="text-align: center;">
+                                    <a href="${resetLink}" class="button">REDEFINIR SENHA</a>
+                                </div>
+                                <p>Se você não solicitou esta alteração, ignore este e-mail.</p>
+                                <p><strong>Este link expira em 24 horas.</strong></p>
+                                <div class="footer">
+                                    <p>© 2026 Karaokê Multiplayer - Sua diversão em qualquer lugar!</p>
+                                </div>
+                            </div>
+                        </body>
+                        </html>
+                    `
+                });
+                
+                if (error) {
+                    throw new Error(error.message);
+                }
+                
+                emailEnviado = true;
+                console.log(`✅ E-mail enviado via Resend para ${email}`);
+                
+            } catch (err) {
+                console.error('❌ Erro Resend:', err.message);
+                erroEmail = err.message;
+            }
+        }
+        
+        // FALLBACK PARA GMAIL (se Resend falhou ou não configurado)
+        if (!emailEnviado) {
+            try {
+                await transporter.sendMail({
+                    from: '"Karaokê Multiplayer" <dominio3000@gmail.com>',
+                    to: email,
+                    subject: '🔐 Recuperação de Senha - Karaokê Multiplayer',
+                    html: `
+                        <h2>🎤 Recuperação de Senha</h2>
+                        <p>Olá, você solicitou a recuperação de senha.</p>
+                        <p>Clique no link para redefinir sua senha:</p>
+                        <p><a href="${resetLink}">${resetLink}</a></p>
+                        <p>Este link expira em 24 horas.</p>
+                        <p>Se não foi você, ignore este e-mail.</p>
+                        <br>
+                        <p>© 2026 Karaokê Multiplayer</p>
+                    `
+                });
+                
+                emailEnviado = true;
+                console.log(`✅ E-mail enviado via Gmail para ${email}`);
+                
+            } catch (err) {
+                console.error('❌ Erro Gmail:', err.message);
+                erroEmail = err.message;
+            }
+        }
+        
+        if (!emailEnviado) {
+            console.error(`❌ Falha no envio de e-mail para ${email}. Erro: ${erroEmail}`);
+            return res.status(500).json({ 
+                sucesso: false, 
+                erro: 'Não foi possível enviar o e-mail. Tente novamente mais tarde.' 
+            });
+        }
+        
+        res.json({ 
+            sucesso: true, 
+            mensagem: 'Um link de recuperação foi enviado para seu e-mail.' 
+        });
+        
+    } catch (error) {
+        console.error('❌ Erro ao solicitar recuperação:', error);
+        res.status(500).json({ erro: 'Erro interno no servidor' });
+    }
+});
+
+// ================= REDEFINIR SENHA =================
+app.post('/api/auth/redefinir-senha', async (req, res) => {
+    try {
+        const { token, novaSenha } = req.body;
+        
+        if (!token || !novaSenha) {
+            return res.status(400).json({ erro: 'Token e nova senha são obrigatórios' });
+        }
+        
+        // Buscar token no banco
+        const { data: resetData, error: resetError } = await supabase
+            .from('reset_tokens')
+            .select('*')
+            .eq('token', token)
+            .single();
+        
+        if (resetError || !resetData) {
+            return res.status(400).json({ erro: 'Token inválido ou expirado' });
+        }
+        
+        // Verificar expiração (24 horas)
+        const tokenExpiry = new Date(resetData.created_at);
+        tokenExpiry.setHours(tokenExpiry.getHours() + 24);
+        
+        if (new Date() > tokenExpiry) {
+            // Deletar token expirado
+            await supabase.from('reset_tokens').delete().eq('token', token);
+            return res.status(400).json({ erro: 'Token expirado. Solicite um novo.' });
+        }
+        
+        // Criar hash da nova senha
+        const senhaHash = await bcrypt.hash(novaSenha, 10);
+        
+        // Atualizar a senha do usuário
+        const { error: updateError } = await supabase
+            .from('usuarios')
+            .update({ senha_hash: senhaHash })
+            .eq('email', resetData.email);
+        
+        if (updateError) throw updateError;
+        
+        // Remover o token usado
+        await supabase
+            .from('reset_tokens')
+            .delete()
+            .eq('token', token);
+        
+        res.json({ sucesso: true, mensagem: 'Senha redefinida com sucesso!' });
+        
+    } catch (error) {
+        console.error('❌ Erro ao redefinir senha:', error);
+        res.status(500).json({ erro: 'Erro interno no servidor' });
+    }
 });
 
 // ================= CRIAR PAGAMENTO =================
@@ -370,7 +569,7 @@ app.post('/api/webhook', async (req, res) => {
     // ================= ENVIAR E-MAIL =================
     try {
       const prices = {
-        mensal: 11.90,
+        mensal: 5.00,
         trimestral: 24.90,
         semestral: 49.90,
         anual: 89.90
@@ -443,7 +642,7 @@ app.post('/api/webhook', async (req, res) => {
           from: '"Karaokê Multiplayer" <dominio3000@gmail.com>',
           to: email,
           subject: '✅ Pagamento Confirmado - Acesso Liberado!',
-          html: `<h2>Olá!</h2><p>Seu pagamento foi confirmado!</p><p><strong>Senha temporária:</strong> ${senhaTemporaria}</p><p><a href="https://karaoke-multiplayer.pages.dev/login.html">Clique aqui para acessar</a></p>`
+          html: `<h2>Olá!</h2><p>Seu pagamento foi confirmado!</p><p><strong>Senha temporária:</strong> ${senhaTemporaria}</p><p><a href="https://karaokemultiplayer.com.br/login.html">Clique aqui para acessar</a></p>`
         });
       }
       
