@@ -74,7 +74,7 @@ export default async function handler(req, res) {
       .from('usuarios')
       .update({
         reset_token: resetToken,
-        reset_token_expira: expiresAt   // 🔥 PADRÃO CORRETO
+        reset_expires: expiresAt   // 🔥 PADRÃO CORRETO
       })
       .eq('email', email);
 
