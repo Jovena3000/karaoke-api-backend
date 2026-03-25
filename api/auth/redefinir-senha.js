@@ -63,12 +63,12 @@ export default async function handler(req, res) {
     }
 
     // ===== VERIFICAR EXPIRAÇÃO =====
-    if (!user.reset_token_expira || new Date(user.reset_token_expira) < new Date()) {
-      return res.status(400).json({
-        sucesso: false,
-        mensagem: 'Token expirado'
-      });
-    }
+if (!user.reset_expires || new Date(user.reset_expires) < new Date()) {
+  return res.status(400).json({
+    sucesso: false,
+    mensagem: 'Token expirado'
+  });
+}
 
     console.log('🔐 Gerando nova senha...');
 
