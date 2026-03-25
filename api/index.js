@@ -13,7 +13,7 @@ app.use(express.json());
 
 // Configuração CORS completa
 const allowedOrigins = [
-  'https://karaoke-multiplayer.pages.dev',
+  'https://karaokemultiplayer.com.br',
   'https://www.karaokemultiplayer.com.br',
   'http://localhost:3000',
   'http://localhost:8080',
@@ -202,7 +202,7 @@ app.post('/api/criar-pagamento', async (req, res) => {
 
     // Tabela de preços
     const prices = {
-      mensal: 11.90,
+      mensal: 5.00,
       trimestral: 24.90,
       semestral: 49.90,
       anual: 89.90
@@ -258,9 +258,9 @@ app.post('/api/criar-pagamento', async (req, res) => {
         email: email
       },
       back_urls: {
-        success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
-        failure: 'https://karaoke-multiplayer.pages.dev/erro.html',
-        pending: 'https://karaoke-multiplayer.pages.dev/pendente.html'
+        success: 'https://karaokemultiplayer.com.br/pagamento-sucesso.html',
+        failure: 'https://karaokemultiplayer.com.br/erro.html',
+        pending: 'https://karaokemultiplayer.com.br/pendente.html'
       },
       auto_return: 'approved',
       notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
@@ -423,7 +423,7 @@ app.post('/api/webhook', async (req, res) => {
                   <p style="color: #e67e22;"><strong>⚠️ Importante:</strong> Troque sua senha após o primeiro acesso.</p>
                   
                   <div style="text-align: center;">
-                    <a href="https://karaoke-multiplayer.pages.dev/login.html" class="button">
+                    <a href="https://karaokemultiplayer.com.br/login.html" class="button">
                       ACESSAR KARAOKÊ PREMIUM
                     </a>
                   </div>
