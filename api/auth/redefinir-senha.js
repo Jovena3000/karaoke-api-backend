@@ -6,24 +6,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-function setCors(req, res) {
-  const allowedOrigins = [
-    'https://karaokemultiplayer.com.br',
-    'http://localhost:3000'
-  ];
+export default async function handler(req, res) {
 
-  const origin = req.headers.origin;
-
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-
+  // ===== CORS =====
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-export default async function handler(req, res) {
-  setCors(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -43,14 +31,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (novaSenha.length < 6) {
-      return res.status(400).json({
-        sucesso: false,
-        mensagem: 'Senha muito curta'
-      });
-    }
-
-    // 🔍 Buscar usuário
+    // 🔍 Buscar usuário pelo token + email
     const { data: user, error } = await supabase
       .from('usuarios')
       .select('*')
@@ -65,18 +46,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // ⏱️ Verificar expiração (CORRETO)
-    if (!user.reset_expires || new Date(user.reset_expires) < new Date()) {
-      return res.status(400).json({
-        sucesso: false,
-        mensagem: 'Token expirado'
-      });
-    }
-
-    // 🔐 Criptografar senha
+    // 🔐 Gerar hash da nova senha
     const senhaHash = await bcrypt.hash(novaSenha, 10);
 
-    // 💾 Atualizar senha + limpar token
+    // 💾 Atualizar senha
     const { error: updateError } = await supabase
       .from('usuarios')
       .update({
@@ -90,7 +63,7 @@ export default async function handler(req, res) {
       console.error(updateError);
       return res.status(500).json({
         sucesso: false,
-        mensagem: 'Erro ao atualizar senha'
+        mensagem: 'Erro ao salvar nova senha'
       });
     }
 
@@ -100,7 +73,7 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('ERRO GERAL:', err);
+    console.error('Erro geral:', err);
     return res.status(500).json({
       sucesso: false,
       mensagem: 'Erro interno'
