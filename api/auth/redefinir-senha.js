@@ -6,12 +6,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-export default async function handler(req, res) {
-
-  // ===== CORS =====
+function setCors(req, res) {
   const allowedOrigins = [
     'https://karaokemultiplayer.com.br',
-    'https://www.karaokemultiplayer.com.br',
     'http://localhost:3000'
   ];
 
@@ -19,35 +16,41 @@ export default async function handler(req, res) {
 
   if (allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigins[0]);
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+export default async function handler(req, res) {
+  setCors(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ sucesso: false, mensagem: 'Método não permitido' });
+    return res.status(405).json({ sucesso: false });
   }
 
   try {
-    const { token, novaSenha, email } = req.body;
+    const { token, email, novaSenha } = req.body;
 
-    if (!token || !novaSenha || !email) {
-      return res.status(400).json({ sucesso: false, mensagem: 'Dados incompletos' });
+    if (!token || !email || !novaSenha) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Dados incompletos'
+      });
     }
 
     if (novaSenha.length < 6) {
-      return res.status(400).json({ sucesso: false, mensagem: 'Senha mínima: 6 caracteres' });
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Senha muito curta'
+      });
     }
 
-    console.log('🔍 Validando token...');
-
-    // ===== BUSCAR USUÁRIO COM TOKEN =====
+    // 🔍 Buscar usuário
     const { data: user, error } = await supabase
       .from('usuarios')
       .select('*')
@@ -58,49 +61,46 @@ export default async function handler(req, res) {
     if (error || !user) {
       return res.status(400).json({
         sucesso: false,
-        mensagem: 'Token inválido ou expirado'
+        mensagem: 'Token inválido'
       });
     }
 
-    // ===== VERIFICAR EXPIRAÇÃO =====
-if (!user.reset_expires || new Date(user.reset_expires) < new Date()) {
-  return res.status(400).json({
-    sucesso: false,
-    mensagem: 'Token expirado'
-  });
-}
+    // ⏱️ Verificar expiração (CORRETO)
+    if (!user.reset_expires || new Date(user.reset_expires) < new Date()) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Token expirado'
+      });
+    }
 
-    console.log('🔐 Gerando nova senha...');
-
+    // 🔐 Criptografar senha
     const senhaHash = await bcrypt.hash(novaSenha, 10);
 
-    // ===== ATUALIZAR SENHA =====
+    // 💾 Atualizar senha + limpar token
     const { error: updateError } = await supabase
       .from('usuarios')
       .update({
         senha_hash: senhaHash,
         reset_token: null,
-        reset_token_expira: null
+        reset_expires: null
       })
       .eq('email', email);
 
     if (updateError) {
-      console.error('❌ Erro ao atualizar senha:', updateError);
+      console.error(updateError);
       return res.status(500).json({
         sucesso: false,
-        mensagem: 'Erro ao salvar nova senha'
+        mensagem: 'Erro ao atualizar senha'
       });
     }
 
-    console.log('✅ Senha atualizada com sucesso');
-
     return res.status(200).json({
       sucesso: true,
-      mensagem: 'Senha redefinida com sucesso'
+      mensagem: 'Senha redefinida com sucesso!'
     });
 
-  } catch (error) {
-    console.error('🔥 Erro:', error);
+  } catch (err) {
+    console.error('ERRO GERAL:', err);
     return res.status(500).json({
       sucesso: false,
       mensagem: 'Erro interno'
