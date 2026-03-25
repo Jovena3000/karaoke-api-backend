@@ -1,5 +1,4 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -7,12 +6,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
 function setCors(req, res) {
   const allowedOrigins = [
     'https://karaokemultiplayer.com.br',
-    'https://www.karaokemultiplayer.com.br',
     'http://localhost:3000'
   ];
 
@@ -20,12 +16,10 @@ function setCors(req, res) {
 
   if (allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigins[0]);
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 export default async function handler(req, res) {
@@ -36,67 +30,80 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ erro: 'Método não permitido' });
+    return res.status(405).json({ sucesso: false });
   }
 
   try {
-    const { email, senha } = req.body;
+    const { token, email, novaSenha } = req.body;
 
-    if (!email || !senha) {
-      return res.status(400).json({ erro: 'Email e senha obrigatórios' });
+    if (!token || !email || !novaSenha) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Dados incompletos'
+      });
     }
 
-    // 🔥 MELHOR: evita erro 500 se não encontrar usuário
+    if (novaSenha.length < 6) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Senha muito curta'
+      });
+    }
+
+    // 🔍 Buscar usuário
     const { data: user, error } = await supabase
       .from('usuarios')
       .select('*')
       .eq('email', email)
-      .maybeSingle();
+      .eq('reset_token', token)
+      .single();
 
     if (error || !user) {
-      return res.status(401).json({ erro: 'Credenciais inválidas' });
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Token inválido'
+      });
     }
 
-    // 🔐 Verifica senha
-    const senhaCorreta = await bcrypt.compare(senha, user.senha_hash);
-    if (!senhaCorreta) {
-      return res.status(401).json({ erro: 'Credenciais inválidas' });
+    // ⏱️ Verificar expiração (CORRETO)
+    if (!user.reset_expires || new Date(user.reset_expires) < new Date()) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Token expirado'
+      });
     }
 
-    // 🚫 Verifica status
-    if (user.status !== 'ativo') {
-      return res.status(403).json({ erro: 'Pagamento pendente' });
-    }
+    // 🔐 Criptografar senha
+    const senhaHash = await bcrypt.hash(novaSenha, 10);
 
-    // ⏳ Verifica expiração do plano
-    if (user.data_expiracao && new Date(user.data_expiracao) < new Date()) {
-      return res.status(403).json({ erro: 'Plano expirado' });
-    }
+    // 💾 Atualizar senha + limpar token
+    const { error: updateError } = await supabase
+      .from('usuarios')
+      .update({
+        senha_hash: senhaHash,
+        reset_token: null,
+        reset_expires: null
+      })
+      .eq('email', email);
 
-    // 🔐 Gerar token
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        plano: user.plano
-      },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    if (updateError) {
+      console.error(updateError);
+      return res.status(500).json({
+        sucesso: false,
+        mensagem: 'Erro ao atualizar senha'
+      });
+    }
 
     return res.status(200).json({
       sucesso: true,
-      token,
-      usuario: {
-        id: user.id,
-        nome: user.nome,
-        email: user.email,
-        plano: user.plano
-      }
+      mensagem: 'Senha redefinida com sucesso!'
     });
 
   } catch (err) {
-    console.error('🔥 Erro no login:', err);
-    return res.status(500).json({ erro: 'Erro interno do servidor' });
+    console.error('ERRO GERAL:', err);
+    return res.status(500).json({
+      sucesso: false,
+      mensagem: 'Erro interno'
+    });
   }
 }
