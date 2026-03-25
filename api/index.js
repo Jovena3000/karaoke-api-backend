@@ -13,7 +13,7 @@ app.use(express.json());
 
 // Configuração CORS completa
 const allowedOrigins = [
-  'https://karaokemultiplayer.com.br',
+  'https://karaoke-multiplayer.pages.dev',
   'https://www.karaokemultiplayer.com.br',
   'http://localhost:3000',
   'http://localhost:8080',
@@ -29,7 +29,7 @@ app.use(cors({
       const msg = 'A política CORS não permite acesso desta origem.';
       return callback(new Error(msg), false);
     }
-    return callback(null, origin);
+    return callback(null, true);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
@@ -40,37 +40,20 @@ app.use(cors({
 app.options('*', cors());
 
 // ================= VARIÁVEIS DE AMBIENTE =================
-const JWT_SECRET = process.env.JWT_SECRET || 'seu-segredo-aqui-mude-em-producao';
+const JWT_SECRET = process.env.JWT_SECRET;
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
+// Verificar variáveis obrigatórias
+if (!JWT_SECRET) console.error('❌ JWT_SECRET não configurada!');
+if (!MP_ACCESS_TOKEN) console.error('❌ MP_ACCESS_TOKEN não configurada!');
+if (!SUPABASE_URL) console.error('❌ SUPABASE_URL não configurada!');
+if (!SUPABASE_SERVICE_KEY) console.error('❌ SUPABASE_SERVICE_KEY não configurada!');
+
 // ================= CONFIGURAÇÃO SUPABASE =================
-const supabase = createClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_KEY,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false
-    },
-    db: {
-      schema: 'public'
-    },
-    global: {
-      headers: {
-        'X-Client-Info': 'supabase-js/2.x'
-      }
-    },
-    fetch: (url, options) => {
-      return fetch(url, {
-        ...options,
-        timeout: 30000
-      });
-    }
-  }
-);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 // ================= CONFIGURAÇÃO MERCADO PAGO =================
 mercadopago.configure({
@@ -78,14 +61,17 @@ mercadopago.configure({
 });
 
 // ================= CONFIGURAÇÃO RESEND =================
-const resend = new Resend(RESEND_API_KEY);
+let resend = null;
+if (RESEND_API_KEY) {
+  resend = new Resend(RESEND_API_KEY);
+}
 
 // ================= CONFIGURAÇÃO NODEMAILER (FALLBACK) =================
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: process.env.GMAIL_USER || "dominio3000@gmail.com",
-    pass: process.env.GMAIL_PASS || "vwtv iiai zagc eqie"
+    pass: process.env.GMAIL_PASS
   }
 });
 
@@ -216,10 +202,10 @@ app.post('/api/criar-pagamento', async (req, res) => {
 
     // Tabela de preços
     const prices = {
-      mensal: 5.00,      // ← CORRIGIDO: ponto em vez de vírgula
-      trimestral: 49.90,
-      semestral: 89.90,
-      anual: 159.90
+      mensal: 11.90,
+      trimestral: 24.90,
+      semestral: 49.90,
+      anual: 89.90
     };
 
     if (!prices[plan]) {
@@ -272,9 +258,9 @@ app.post('/api/criar-pagamento', async (req, res) => {
         email: email
       },
       back_urls: {
-        success: 'https://karaokemultiplayer.com.br/pagamento-sucesso',
-        failure: 'https://karaokemultiplayer.com.br/erro',
-        pending: 'https://karaokemultiplayer.com.br/pendente'
+        success: 'https://karaoke-multiplayer.pages.dev/pagamento-sucesso.html',
+        failure: 'https://karaoke-multiplayer.pages.dev/erro.html',
+        pending: 'https://karaoke-multiplayer.pages.dev/pendente.html'
       },
       auto_return: 'approved',
       notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
@@ -384,14 +370,14 @@ app.post('/api/webhook', async (req, res) => {
     // ================= ENVIAR E-MAIL =================
     try {
       const prices = {
-        mensal: 24.90,
-        trimestral: 49.90,
-        semestral: 89.90,
-        anual: 159.90
+        mensal: 11.90,
+        trimestral: 24.90,
+        semestral: 49.90,
+        anual: 89.90
       };
       
       // Tentar enviar com Resend primeiro
-      if (RESEND_API_KEY) {
+      if (resend) {
         await resend.emails.send({
           from: 'Karaokê Multiplayer <onboarding@resend.dev>',
           to: email,
@@ -423,7 +409,7 @@ app.post('/api/webhook', async (req, res) => {
                   
                   <div class="info-box">
                     <p><strong>📋 Plano:</strong> Plano ${plan}</p>
-                    <p><strong>💰 Valor:</strong> R$ ${prices[plan]?.toFixed(2) || '49,90'}</p>
+                    <p><strong>💰 Valor:</strong> R$ ${prices[plan]?.toFixed(2) || '24,90'}</p>
                     <p><strong>🆔 ID da Transação:</strong> ${paymentId}</p>
                     <p><strong>📅 Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
                   </div>
@@ -437,7 +423,7 @@ app.post('/api/webhook', async (req, res) => {
                   <p style="color: #e67e22;"><strong>⚠️ Importante:</strong> Troque sua senha após o primeiro acesso.</p>
                   
                   <div style="text-align: center;">
-                    <a href="https://karaokemultiplayer.com.br/login" class="button">
+                    <a href="https://karaoke-multiplayer.pages.dev/login.html" class="button">
                       ACESSAR KARAOKÊ PREMIUM
                     </a>
                   </div>
@@ -448,7 +434,7 @@ app.post('/api/webhook', async (req, res) => {
                 </div>
               </div>
             </body>
-            <\/html>
+            </html>
           `
         });
       } else {
@@ -457,7 +443,7 @@ app.post('/api/webhook', async (req, res) => {
           from: '"Karaokê Multiplayer" <dominio3000@gmail.com>',
           to: email,
           subject: '✅ Pagamento Confirmado - Acesso Liberado!',
-          html: `<p>Olá, seu pagamento foi confirmado! Sua senha é: <b>${senhaTemporaria}</b></p>`
+          html: `<h2>Olá!</h2><p>Seu pagamento foi confirmado!</p><p><strong>Senha temporária:</strong> ${senhaTemporaria}</p><p><a href="https://karaoke-multiplayer.pages.dev/login.html">Clique aqui para acessar</a></p>`
         });
       }
       
@@ -485,20 +471,5 @@ app.get('/', (req, res) => {
   });
 });
 
-// ================= INICIAR SERVIDOR =================
-const PORT = process.env.PORT || 3000;
-
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`\n🚀 Servidor rodando em http://localhost:${PORT}`);
-    console.log(`📝 Endpoints disponíveis:`);
-    console.log(`   GET  /`);
-    console.log(`   GET  /api/status`);
-    console.log(`   POST /api/auth/login`);
-    console.log(`   POST /api/auth/register`);
-    console.log(`   POST /api/criar-pagamento`);
-    console.log(`   POST /api/webhook\n`);
-  });
-}
-
+// ================= EXPORTAÇÃO PARA VERCEL =================
 module.exports = app;
