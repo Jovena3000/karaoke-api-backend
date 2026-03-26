@@ -8,7 +8,6 @@ module.exports = async function handler(req, res) {
 
   // 🌐 Domínios permitidos (CORS)
   const allowedOrigins = [
-    "https://karaoke-multiplayer.pages.dev",
     "https://karaokemultiplayer.com.br",
     "https://www.karaokemultiplayer.com.br"
   ];
