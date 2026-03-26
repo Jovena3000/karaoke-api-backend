@@ -1,82 +1,149 @@
-const { MercadoPagoConfig, Preference } = require("mercadopago");
+const mercadopago = require("mercadopago");
 
-const client = new MercadoPagoConfig({
-    accessToken: process.env.MP_ACCESS_TOKEN
+mercadopago.configure({
+  access_token: process.env.MP_ACCESS_TOKEN
 });
 
-const preferenceApi = new Preference(client);
+module.exports = async function handler(req, res) {
 
-module.exports = async (req, res) => {
+  // ===== CORS =====
+  const allowedOrigins = [
+    "https://karaokemultiplayer.com.br",
+    "https://www.karaokemultiplayer.com.br"
+  ];
 
-    res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  const origin = req.headers.origin;
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "https://karaokemultiplayer.com.br");
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ erro: "Método não permitido" });
+  }
+
+  try {
+
+    const { plan, email, metodo } = req.body;
+
+    if (!plan || !email) {
+      return res.status(400).json({
+        erro: "Plano e email obrigatórios"
+      });
     }
 
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Método não permitido' });
+    const prices = {
+      mensal: 5.00,
+      trimestral: 49.90,
+      semestral: 89.90,
+      anual: 159.90
+    };
+
+    if (!prices[plan]) {
+      return res.status(400).json({
+        erro: "Plano inválido"
+      });
     }
 
-    try {
-        const { title, price, plan, email } = req.body;
+    const price = prices[plan];
 
-        if (!email || !plan) {
-            return res.status(400).json({
-                erro: 'Email e plano são obrigatórios'
-            });
+    console.log("📦 Criando pagamento:", { email, plan, price, metodo });
+
+    // 🔑 ESSA LINHA É A MAIS IMPORTANTE
+    const externalReference = JSON.stringify({
+      email,
+      plan,
+      created_at: Date.now()
+    });
+
+    // =========================
+    // 🟢 PIX (AGORA CORRIGIDO)
+    // =========================
+    if (metodo === "pix") {
+
+      console.log("💰 Gerando PIX...");
+
+      const payment_data = {
+        transaction_amount: price,
+        description: `Plano Karaokê ${plan}`,
+        payment_method_id: "pix",
+        external_reference: externalReference, // 🔥 CORREÇÃO AQUI
+        payer: {
+          email: email
         }
+      };
 
-        const preference = {
-            items: [
-                {
-                    title: title || 'Plano Karaokê Multiplayer',
-                    unit_price: parseFloat(price) || 24.90,
-                    quantity: 1,
-                    currency_id: 'BRL',
-                    description: plan
-                }
-            ],
+      const payment = await mercadopago.payment.create(payment_data);
+      const body = payment.body;
 
-            payer: {
-                email: email
-            },
+      console.log("✅ PIX criado:", body.id);
 
-            // 🔥 ESSENCIAL PARA O WEBHOOK
-            external_reference: JSON.stringify({
-                email: email,
-                plan: plan,
-                created_at: Date.now()
-            }),
-
-            back_urls: {
-                success: 'https://karaokemultiplayer.com.br/pagamento-sucesso.html',
-                failure: 'https://karaokemultiplayer.com.br/erro.html',
-                pending: 'https://karaokemultiplayer.com.br/pendente.html'
-            },
-
-            auto_return: 'approved',
-
-            notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook'
-        };
-
-        const response = await preferenceApi.create({ body: preference });
-
-        res.status(200).json({
-            sucesso: true,
-            id: response.id,
-            init_point: response.init_point
-        });
-
-    } catch (error) {
-
-        console.error('Erro ao criar preferência:', error);
-
-        res.status(500).json({ 
-            erro: 'Erro ao criar preferência de pagamento',
-            detalhe: error.message 
-        });
+      return res.status(200).json({
+        sucesso: true,
+        id: body.id,
+        qr_code_base64: body.point_of_interaction.transaction_data.qr_code_base64,
+        qr_code: body.point_of_interaction.transaction_data.qr_code,
+        ticket_url: body.point_of_interaction.transaction_data.ticket_url
+      });
     }
+
+    // =========================
+    // 🔵 CARTÃO (já estava ok)
+    // =========================
+    const preference = {
+      items: [
+        {
+          title: `Plano Karaokê ${plan}`,
+          quantity: 1,
+          currency_id: "BRL",
+          unit_price: price
+        }
+      ],
+
+      payer: {
+        email: email
+      },
+
+      external_reference: externalReference, // 🔥 IMPORTANTE
+
+      back_urls: {
+        success: "https://karaokemultiplayer.com.br/pagamento-sucesso",
+        failure: "https://karaokemultiplayer.com.br/pagamento-falha",
+        pending: "https://karaokemultiplayer.com.br/pagamento-pendente"
+      },
+
+      auto_return: "approved",
+
+      notification_url: "https://karaoke-api-backend3.vercel.app/api/webhook"
+    };
+
+    const response = await mercadopago.preferences.create(preference);
+
+    console.log("✅ Checkout criado:", response.body.id);
+
+    return res.status(200).json({
+      sucesso: true,
+      id: response.body.id,
+      init_point: response.body.init_point
+    });
+
+  } catch (error) {
+
+    console.error("❌ ERRO:", error);
+
+    return res.status(500).json({
+      erro: "Erro ao criar pagamento",
+      detalhe: error.message
+    });
+
+  }
 };
