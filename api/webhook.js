@@ -2,6 +2,9 @@ const mercadopago = require("mercadopago");
 const bcrypt = require("bcryptjs");
 const { Resend } = require("resend");
 const { createClient } = require("@supabase/supabase-js");
+console.log("🚀 WEBHOOK DISPARADO");
+console.log("BODY:", JSON.stringify(req.body));
+console.log("QUERY:", req.query);
 
 // Configurar Mercado Pago
 mercadopago.configure({
