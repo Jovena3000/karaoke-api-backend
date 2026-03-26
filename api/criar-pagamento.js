@@ -1,111 +1,44 @@
-const mercadopago = require("mercadopago");
+import { MercadoPagoConfig, Preference } from "mercadopago";
 
-mercadopago.configure({
-  access_token: process.env.MP_ACCESS_TOKEN
+// Configurar cliente
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN
 });
 
-module.exports = async function handler(req, res) {
+const preferenceApi = new Preference(client);
 
-  // ===== CORS =====
-  const allowedOrigins = [
-    "https://karaokemultiplayer.com.br",
-    "https://www.karaokemultiplayer.com.br"
-  ];
+export default async function handler(req, res) {
 
-  const origin = req.headers.origin;
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "https://karaokemultiplayer.com.br");
-  }
-
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") {
+  if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ erro: "Método não permitido" });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método não permitido' });
   }
 
   try {
+    const { title, price, plan, email } = req.body;
 
-    const { plan, email, metodo } = req.body;
-
-    if (!plan || !email) {
+    if (!email || !plan) {
       return res.status(400).json({
-        erro: "Plano e email obrigatórios"
+        erro: 'Email e plano são obrigatórios'
       });
     }
 
-    const prices = {
-      mensal: 5.00,
-      trimestral: 49.90,
-      semestral: 89.90,
-      anual: 159.90
-    };
-
-    if (!prices[plan]) {
-      return res.status(400).json({
-        erro: "Plano inválido"
-      });
-    }
-
-    const price = prices[plan];
-
-    console.log("📦 Criando pagamento:", { email, plan, price, metodo });
-
-    // 🔑 ESSA LINHA É A MAIS IMPORTANTE
-    const externalReference = JSON.stringify({
-      email,
-      plan,
-      created_at: Date.now()
-    });
-
-    // =========================
-    // 🟢 PIX (AGORA CORRIGIDO)
-    // =========================
-    if (metodo === "pix") {
-
-      console.log("💰 Gerando PIX...");
-
-      const payment_data = {
-        transaction_amount: price,
-        description: `Plano Karaokê ${plan}`,
-        payment_method_id: "pix",
-        external_reference: externalReference, // 🔥 CORREÇÃO AQUI
-        payer: {
-          email: email
-        }
-      };
-
-      const payment = await mercadopago.payment.create(payment_data);
-      const body = payment.body;
-
-      console.log("✅ PIX criado:", body.id);
-
-      return res.status(200).json({
-        sucesso: true,
-        id: body.id,
-        qr_code_base64: body.point_of_interaction.transaction_data.qr_code_base64,
-        qr_code: body.point_of_interaction.transaction_data.qr_code,
-        ticket_url: body.point_of_interaction.transaction_data.ticket_url
-      });
-    }
-
-    // =========================
-    // 🔵 CARTÃO (já estava ok)
-    // =========================
     const preference = {
       items: [
         {
-          title: `Plano Karaokê ${plan}`,
+          title: title || 'Plano Karaokê Multiplayer',
+          unit_price: parseFloat(price) || 24.90,
           quantity: 1,
-          currency_id: "BRL",
-          unit_price: price
+          currency_id: 'BRL',
+          description: plan
         }
       ],
 
@@ -113,37 +46,39 @@ module.exports = async function handler(req, res) {
         email: email
       },
 
-      external_reference: externalReference, // 🔥 IMPORTANTE
+      // 🔥 ESSENCIAL PARA WEBHOOK
+      external_reference: JSON.stringify({
+        email: email,
+        plan: plan,
+        created_at: Date.now()
+      }),
 
       back_urls: {
-        success: "https://karaokemultiplayer.com.br/pagamento-sucesso",
-        failure: "https://karaokemultiplayer.com.br/pagamento-falha",
-        pending: "https://karaokemultiplayer.com.br/pagamento-pendente"
+        success: 'https://karaokemultiplayer.com.br/pagamento-sucesso.html',
+        failure: 'https://karaokemultiplayer.com.br/erro.html',
+        pending: 'https://karaokemultiplayer.com.br/pendente.html'
       },
 
-      auto_return: "approved",
+      auto_return: 'approved',
 
-      notification_url: "https://karaoke-api-backend3.vercel.app/api/webhook"
+      notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook'
     };
 
-    const response = await mercadopago.preferences.create(preference);
-
-    console.log("✅ Checkout criado:", response.body.id);
+    const response = await preferenceApi.create({ body: preference });
 
     return res.status(200).json({
       sucesso: true,
-      id: response.body.id,
-      init_point: response.body.init_point
+      id: response.id,
+      init_point: response.init_point
     });
 
   } catch (error) {
 
-    console.error("❌ ERRO:", error);
+    console.error('Erro ao criar preferência:', error);
 
-    return res.status(500).json({
-      erro: "Erro ao criar pagamento",
-      detalhe: error.message
+    return res.status(500).json({ 
+      erro: 'Erro ao criar pagamento',
+      detalhe: error.message 
     });
-
   }
-};
+}
