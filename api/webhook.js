@@ -43,7 +43,7 @@ export default async function handler(req, res) {
 
     console.log("🧾 Payment ID:", paymentId);
 
-    // 🚫 EVITAR DUPLICIDADE
+    // ===== EVITAR DUPLICIDADE =====
     const { data: jaProcessado } = await supabase
       .from("pagamentos_processados")
       .select("id")
@@ -51,41 +51,47 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (jaProcessado) {
-      console.log("⚠️ Pagamento já processado:", paymentId);
+      console.log("⚠️ Já processado:", paymentId);
       return res.status(200).end();
     }
 
-    // ===== BUSCAR PAGAMENTO COM RETRY =====
+    // ===== BUSCAR PAGAMENTO COM RETRY (CORRIGIDO) =====
     let payment = null;
-    let tentativas = 0;
-    const maxTentativas = 5;
 
-    while (tentativas < maxTentativas) {
+    for (let i = 0; i < 6; i++) {
       try {
+
+        console.log(`🔄 Tentativa ${i + 1}...`);
+
         payment = await paymentApi.get({ id: paymentId });
 
         if (payment && payment.status) {
+          console.log("✅ Pagamento encontrado");
           break;
         }
 
       } catch (err) {
-        console.log(`⏳ Tentativa ${tentativas + 1} falhou`);
+
+        if (err.status === 404) {
+          console.log("⏳ Ainda não disponível...");
+        } else {
+          console.error("❌ Erro inesperado:", err.message);
+          return res.status(200).end();
+        }
       }
 
-      tentativas++;
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(r => setTimeout(r, 2000));
     }
 
-    if (!payment) {
-      console.log("❌ Não conseguiu obter pagamento");
+    if (!payment || !payment.status) {
+      console.log("❌ Falha ao obter pagamento");
       return res.status(200).end();
     }
 
     console.log("💳 Status:", payment.status);
 
     if (payment.status !== "approved") {
-      console.log("⏳ Ainda não aprovado");
+      console.log("⏳ Não aprovado ainda");
       return res.status(200).end();
     }
 
@@ -97,8 +103,7 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    let email;
-    let plan;
+    let email, plan;
 
     try {
       const ref = JSON.parse(payment.external_reference);
@@ -110,7 +115,7 @@ export default async function handler(req, res) {
     }
 
     if (!email || !plan) {
-      console.log("❌ Email ou plano ausente");
+      console.log("❌ Dados inválidos");
       return res.status(200).end();
     }
 
@@ -130,7 +135,7 @@ export default async function handler(req, res) {
     const dataExpiracao = new Date();
     dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
 
-    // ===== VERIFICAR USUÁRIO =====
+    // ===== USUÁRIO =====
     const { data: usuarioExistente } = await supabase
       .from("usuarios")
       .select("*")
@@ -204,7 +209,7 @@ export default async function handler(req, res) {
       console.error("❌ Erro email:", erroEmail);
     }
 
-    // ✅ MARCAR COMO PROCESSADO
+    // ===== MARCAR PROCESSADO =====
     await supabase
       .from("pagamentos_processados")
       .insert({
@@ -217,6 +222,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("🔥 Erro webhook:", err);
-    return res.status(200).end(); // ⚠️ importante pro Mercado Pago não reenviar infinitamente
+    return res.status(200).end();
   }
 }
