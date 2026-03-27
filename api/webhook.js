@@ -43,7 +43,7 @@ export default async function handler(req, res) {
 
     console.log("🧾 Payment ID:", paymentId);
 
-    // ===== EVITAR DUPLICIDADE =====
+    // 🚫 EVITAR DUPLICIDADE
     const { data: jaProcessado } = await supabase
       .from("pagamentos_processados")
       .select("id")
@@ -51,47 +51,17 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (jaProcessado) {
-      console.log("⚠️ Já processado:", paymentId);
+      console.log("⚠️ Pagamento já processado:", paymentId);
       return res.status(200).end();
     }
 
-    // ===== BUSCAR PAGAMENTO COM RETRY (CORRIGIDO) =====
-    let payment = null;
-
-    for (let i = 0; i < 6; i++) {
-      try {
-
-        console.log(`🔄 Tentativa ${i + 1}...`);
-
-        payment = await paymentApi.get({ id: paymentId });
-
-        if (payment && payment.status) {
-          console.log("✅ Pagamento encontrado");
-          break;
-        }
-
-      } catch (err) {
-
-        if (err.status === 404) {
-          console.log("⏳ Ainda não disponível...");
-        } else {
-          console.error("❌ Erro inesperado:", err.message);
-          return res.status(200).end();
-        }
-      }
-
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    if (!payment || !payment.status) {
-      console.log("❌ Falha ao obter pagamento");
-      return res.status(200).end();
-    }
+    // ===== BUSCAR PAGAMENTO =====
+    const payment = await paymentApi.get({ id: paymentId });
 
     console.log("💳 Status:", payment.status);
 
     if (payment.status !== "approved") {
-      console.log("⏳ Não aprovado ainda");
+      console.log("⏳ Ainda não aprovado");
       return res.status(200).end();
     }
 
@@ -103,7 +73,8 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    let email, plan;
+    let email;
+    let plan;
 
     try {
       const ref = JSON.parse(payment.external_reference);
@@ -115,7 +86,7 @@ export default async function handler(req, res) {
     }
 
     if (!email || !plan) {
-      console.log("❌ Dados inválidos");
+      console.log("❌ Email ou plano ausente");
       return res.status(200).end();
     }
 
@@ -135,7 +106,7 @@ export default async function handler(req, res) {
     const dataExpiracao = new Date();
     dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
 
-    // ===== USUÁRIO =====
+    // ===== VERIFICAR USUÁRIO =====
     const { data: usuarioExistente } = await supabase
       .from("usuarios")
       .select("*")
@@ -143,7 +114,6 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (usuarioExistente) {
-
       console.log("🔄 Atualizando usuário");
 
       await supabase
@@ -157,7 +127,6 @@ export default async function handler(req, res) {
         .eq("email", email);
 
     } else {
-
       console.log("🆕 Criando usuário");
 
       await supabase
@@ -173,7 +142,6 @@ export default async function handler(req, res) {
 
     // ===== ENVIAR EMAIL =====
     try {
-
       console.log("📧 Enviando email...");
 
       await resend.emails.send({
@@ -209,7 +177,7 @@ export default async function handler(req, res) {
       console.error("❌ Erro email:", erroEmail);
     }
 
-    // ===== MARCAR PROCESSADO =====
+    // ✅ MARCAR COMO PROCESSADO (ESSENCIAL)
     await supabase
       .from("pagamentos_processados")
       .insert({
@@ -222,6 +190,8 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("🔥 Erro webhook:", err);
-    return res.status(200).end();
+    return res.status(500).json({
+      erro: "Erro interno webhook"
+    });
   }
 }
