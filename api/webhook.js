@@ -19,7 +19,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 export default async function handler(req, res) {
 
-  console.log("🚀 WEBHOOK DISPARADO");
+  console.log("🚀 WEBHOOK VERSÃO FINAL ATIVA");
 
   if (req.method !== "POST") {
     return res.status(200).end();
@@ -30,7 +30,15 @@ export default async function handler(req, res) {
     console.log("📩 Webhook recebido");
     console.log("BODY:", JSON.stringify(req.body));
 
-    // ===== PEGAR PAYMENT ID =====
+    // ================= FILTRO DE EVENTO =================
+    const tipo = req.body?.type || req.query?.type;
+
+    if (tipo && tipo !== "payment") {
+      console.log("⛔ Ignorado - não é pagamento:", tipo);
+      return res.status(200).end();
+    }
+
+    // ================= PEGAR PAYMENT ID =================
     const paymentId =
       req.body?.data?.id ||
       req.body?.id ||
@@ -43,7 +51,7 @@ export default async function handler(req, res) {
 
     console.log("🧾 Payment ID:", paymentId);
 
-    // 🚫 EVITAR DUPLICIDADE
+    // ================= EVITAR DUPLICIDADE =================
     const { data: jaProcessado } = await supabase
       .from("pagamentos_processados")
       .select("id")
@@ -51,30 +59,59 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (jaProcessado) {
-      console.log("⚠️ Pagamento já processado:", paymentId);
+      console.log("⚠️ Já processado:", paymentId);
       return res.status(200).end();
     }
 
-    // ===== BUSCAR PAGAMENTO =====
-    const payment = await paymentApi.get({ id: paymentId });
+    // ================= BUSCAR PAGAMENTO (RETRY REAL) =================
+    let payment = null;
 
-    console.log("💳 Status:", payment.status);
+    for (let i = 0; i < 6; i++) {
+      try {
+
+        console.log(`🔄 Tentativa ${i + 1}...`);
+
+        payment = await paymentApi.get({ id: paymentId });
+
+        if (payment && payment.status) {
+          console.log("✅ Pagamento encontrado");
+          break;
+        }
+
+      } catch (err) {
+
+        if (err.status === 404) {
+          console.log("⏳ Ainda não disponível...");
+        } else {
+          console.error("❌ Erro inesperado:", err.message);
+          return res.status(200).end();
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    if (!payment || !payment.status) {
+      console.log("❌ Falha ao obter pagamento");
+      return res.status(200).end();
+    }
+
+    console.log("💳 Status pagamento:", payment.status);
 
     if (payment.status !== "approved") {
-      console.log("⏳ Ainda não aprovado");
+      console.log("⏳ Pagamento não aprovado");
       return res.status(200).end();
     }
 
     console.log("✅ Pagamento aprovado");
 
-    // ===== VALIDAR external_reference =====
+    // ================= DADOS DO CLIENTE =================
     if (!payment.external_reference) {
       console.log("❌ external_reference vazio");
       return res.status(200).end();
     }
 
-    let email;
-    let plan;
+    let email, plan;
 
     try {
       const ref = JSON.parse(payment.external_reference);
@@ -86,18 +123,20 @@ export default async function handler(req, res) {
     }
 
     if (!email || !plan) {
-      console.log("❌ Email ou plano ausente");
+      console.log("❌ Dados inválidos");
       return res.status(200).end();
     }
 
     console.log("👤 Cliente:", email);
     console.log("📦 Plano:", plan);
 
-    // ===== GERAR SENHA =====
+    // ================= GERAR SENHA =================
     const senhaTemporaria = Math.random().toString(36).slice(-8);
     const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
 
-    // ===== DEFINIR PRAZO =====
+    console.log("🔑 Senha hash gerada");
+
+    // ================= DEFINIR PRAZO =================
     let diasPlano = 30;
     if (plan === "trimestral") diasPlano = 90;
     if (plan === "semestral") diasPlano = 180;
@@ -106,7 +145,7 @@ export default async function handler(req, res) {
     const dataExpiracao = new Date();
     dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
 
-    // ===== VERIFICAR USUÁRIO =====
+    // ================= USUÁRIO =================
     const { data: usuarioExistente } = await supabase
       .from("usuarios")
       .select("*")
@@ -114,7 +153,8 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (usuarioExistente) {
-      console.log("🔄 Atualizando usuário");
+
+      console.log("🔄 Atualizando usuário existente");
 
       await supabase
         .from("usuarios")
@@ -126,8 +166,11 @@ export default async function handler(req, res) {
         })
         .eq("email", email);
 
+      console.log("✅ Usuário atualizado com sucesso");
+
     } else {
-      console.log("🆕 Criando usuário");
+
+      console.log("🆕 Criando novo usuário");
 
       await supabase
         .from("usuarios")
@@ -138,11 +181,14 @@ export default async function handler(req, res) {
           status: "ativo",
           data_expiracao: dataExpiracao
         });
+
+      console.log("✅ Usuário criado com sucesso");
     }
 
-    // ===== ENVIAR EMAIL =====
+    // ================= ENVIAR EMAIL =================
     try {
-      console.log("📧 Enviando email...");
+
+      console.log("📧 Enviando e-mail para:", email);
 
       await resend.emails.send({
         from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
@@ -171,27 +217,23 @@ export default async function handler(req, res) {
         `
       });
 
-      console.log("✅ Email enviado");
+      console.log("📧 Email enviado com sucesso para:", email);
 
     } catch (erroEmail) {
-      console.error("❌ Erro email:", erroEmail);
+      console.error("❌ Erro ao enviar email:", erroEmail);
     }
 
-    // ✅ MARCAR COMO PROCESSADO (ESSENCIAL)
+    // ================= MARCAR COMO PROCESSADO =================
     await supabase
       .from("pagamentos_processados")
-      .insert({
-        id: paymentId
-      });
+      .insert({ id: paymentId });
 
-    console.log("🎉 Finalizado com sucesso");
+    console.log("🎉 Processo finalizado");
 
     return res.status(200).json({ sucesso: true });
 
   } catch (err) {
-    console.error("🔥 Erro webhook:", err);
-    return res.status(500).json({
-      erro: "Erro interno webhook"
-    });
+    console.error("🔥 Erro no webhook:", err);
+    return res.status(200).end();
   }
 }
