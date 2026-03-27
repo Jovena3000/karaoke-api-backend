@@ -55,8 +55,32 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // ===== BUSCAR PAGAMENTO =====
-    const payment = await paymentApi.get({ id: paymentId });
+    // ===== BUSCAR PAGAMENTO COM RETRY =====
+    let payment = null;
+    let tentativas = 0;
+    const maxTentativas = 5;
+
+    while (tentativas < maxTentativas) {
+      try {
+        payment = await paymentApi.get({ id: paymentId });
+
+        if (payment && payment.status) {
+          break;
+        }
+
+      } catch (err) {
+        console.log(`⏳ Tentativa ${tentativas + 1} falhou`);
+      }
+
+      tentativas++;
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    if (!payment) {
+      console.log("❌ Não conseguiu obter pagamento");
+      return res.status(200).end();
+    }
 
     console.log("💳 Status:", payment.status);
 
@@ -114,6 +138,7 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (usuarioExistente) {
+
       console.log("🔄 Atualizando usuário");
 
       await supabase
@@ -127,6 +152,7 @@ export default async function handler(req, res) {
         .eq("email", email);
 
     } else {
+
       console.log("🆕 Criando usuário");
 
       await supabase
@@ -142,6 +168,7 @@ export default async function handler(req, res) {
 
     // ===== ENVIAR EMAIL =====
     try {
+
       console.log("📧 Enviando email...");
 
       await resend.emails.send({
@@ -177,7 +204,7 @@ export default async function handler(req, res) {
       console.error("❌ Erro email:", erroEmail);
     }
 
-    // ✅ MARCAR COMO PROCESSADO (ESSENCIAL)
+    // ✅ MARCAR COMO PROCESSADO
     await supabase
       .from("pagamentos_processados")
       .insert({
@@ -190,8 +217,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("🔥 Erro webhook:", err);
-    return res.status(500).json({
-      erro: "Erro interno webhook"
-    });
+    return res.status(200).end(); // ⚠️ importante pro Mercado Pago não reenviar infinitamente
   }
 }
