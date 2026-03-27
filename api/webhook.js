@@ -26,11 +26,11 @@ export default async function handler(req, res) {
   }
 
   try {
+
     console.log("📩 Webhook recebido");
     console.log("BODY:", JSON.stringify(req.body));
-    console.log("QUERY:", req.query);
 
-    // 🔍 Pegar ID do pagamento (funciona para PIX e cartão)
+    // ===== PEGAR PAYMENT ID =====
     const paymentId =
       req.body?.data?.id ||
       req.body?.id ||
@@ -41,9 +41,21 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    console.log("🔎 Payment ID:", paymentId);
+    console.log("🧾 Payment ID:", paymentId);
 
-    // 🔥 NOVO SDK (CORRETO)
+    // 🚫 EVITAR DUPLICIDADE
+    const { data: jaProcessado } = await supabase
+      .from("pagamentos_processados")
+      .select("id")
+      .eq("id", paymentId)
+      .maybeSingle();
+
+    if (jaProcessado) {
+      console.log("⚠️ Pagamento já processado:", paymentId);
+      return res.status(200).end();
+    }
+
+    // ===== BUSCAR PAGAMENTO =====
     const payment = await paymentApi.get({ id: paymentId });
 
     console.log("💳 Status:", payment.status);
@@ -68,7 +80,7 @@ export default async function handler(req, res) {
       const ref = JSON.parse(payment.external_reference);
       email = ref.email;
       plan = ref.plan;
-    } catch (err) {
+    } catch {
       console.log("❌ external_reference inválido");
       return res.status(200).end();
     }
@@ -87,7 +99,6 @@ export default async function handler(req, res) {
 
     // ===== DEFINIR PRAZO =====
     let diasPlano = 30;
-
     if (plan === "trimestral") diasPlano = 90;
     if (plan === "semestral") diasPlano = 180;
     if (plan === "anual") diasPlano = 365;
@@ -96,21 +107,16 @@ export default async function handler(req, res) {
     dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
 
     // ===== VERIFICAR USUÁRIO =====
-    const { data: usuarioExistente, error: erroBusca } = await supabase
+    const { data: usuarioExistente } = await supabase
       .from("usuarios")
       .select("*")
       .eq("email", email)
       .maybeSingle();
 
-    if (erroBusca) {
-      console.error("❌ Erro ao buscar:", erroBusca);
-    }
-
     if (usuarioExistente) {
-
       console.log("🔄 Atualizando usuário");
 
-      const { error } = await supabase
+      await supabase
         .from("usuarios")
         .update({
           plano: plan,
@@ -120,17 +126,10 @@ export default async function handler(req, res) {
         })
         .eq("email", email);
 
-      if (error) {
-        console.error("❌ Erro update:", error);
-      } else {
-        console.log("✅ Atualizado");
-      }
-
     } else {
-
       console.log("🆕 Criando usuário");
 
-      const { error } = await supabase
+      await supabase
         .from("usuarios")
         .insert({
           email,
@@ -139,18 +138,11 @@ export default async function handler(req, res) {
           status: "ativo",
           data_expiracao: dataExpiracao
         });
-
-      if (error) {
-        console.error("❌ Erro insert:", error);
-      } else {
-        console.log("✅ Criado");
-      }
     }
 
     // ===== ENVIAR EMAIL =====
     try {
-
-      console.log("📧 Enviando email para:", email);
+      console.log("📧 Enviando email...");
 
       await resend.emails.send({
         from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
@@ -158,27 +150,23 @@ export default async function handler(req, res) {
         subject: "🎤 Sua conta está ativa!",
         html: `
         <div style="font-family: Arial; max-width:600px; margin:auto">
+          <h2 style="color:#4CAF50">✅ Pagamento aprovado!</h2>
 
-        <h2 style="color:#4CAF50">✅ Pagamento aprovado!</h2>
+          <p>Seu acesso foi liberado.</p>
 
-        <p>Seu acesso foi liberado.</p>
+          <div style="background:#f5f5f5;padding:20px;border-radius:8px">
+            <p><b>Email:</b> ${email}</p>
+            <p><b>Senha:</b> ${senhaTemporaria}</p>
+            <p><b>Plano:</b> ${plan}</p>
+            <p><b>Expira:</b> ${dataExpiracao.toLocaleDateString("pt-BR")}</p>
+          </div>
 
-        <div style="background:#f5f5f5;padding:20px;border-radius:8px">
+          <br>
 
-        <p><b>Email:</b> ${email}</p>
-        <p><b>Senha:</b> ${senhaTemporaria}</p>
-        <p><b>Plano:</b> ${plan}</p>
-        <p><b>Expira:</b> ${dataExpiracao.toLocaleDateString("pt-BR")}</p>
-
-        </div>
-
-        <br>
-
-        <a href="https://karaokemultiplayer.com.br/login.html"
-        style="background:#4CAF50;color:white;padding:12px 24px;text-decoration:none;border-radius:5px">
-        🔐 Entrar
-        </a>
-
+          <a href="https://karaokemultiplayer.com.br/login.html"
+          style="background:#4CAF50;color:white;padding:12px 24px;text-decoration:none;border-radius:5px">
+          🔐 Entrar
+          </a>
         </div>
         `
       });
@@ -189,7 +177,14 @@ export default async function handler(req, res) {
       console.error("❌ Erro email:", erroEmail);
     }
 
-    console.log("🎉 Finalizado");
+    // ✅ MARCAR COMO PROCESSADO (ESSENCIAL)
+    await supabase
+      .from("pagamentos_processados")
+      .insert({
+        id: paymentId
+      });
+
+    console.log("🎉 Finalizado com sucesso");
 
     return res.status(200).json({ sucesso: true });
 
