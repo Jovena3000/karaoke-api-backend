@@ -1,11 +1,11 @@
-const mercadopago = require('mercadopago');
+import mercadopago from 'mercadopago';
 
 // Configurar Mercado Pago
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
     // Configurar CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -22,7 +22,6 @@ module.exports = async (req, res) => {
     try {
         const { title, price, plan, email } = req.body;
 
-        // Tabela de preços
         const prices = {
             mensal: 5.00,
             trimestral: 24.90,
