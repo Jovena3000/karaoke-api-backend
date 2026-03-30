@@ -1,21 +1,24 @@
-// ✅ IMPORT CORRETO (CommonJS compatível com Vercel)
-const mercadopago = require("mercadopago");
+// ✅ IMPORT CORRETO PARA ES MODULE
+import mercadopago from "mercadopago";
 
-// ===== CONFIG MERCADO PAGO =====
-const client = new mercadopago.MercadoPagoConfig({
+const { MercadoPagoConfig, Preference, Payment } = mercadopago;
+
+// ===== CONFIG =====
+const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN
 });
 
-const preferenceApi = new mercadopago.Preference(client);
-const paymentApi = new mercadopago.Payment(client);
+const preferenceApi = new Preference(client);
+const paymentApi = new Payment(client);
 
 // ===== HANDLER =====
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
 
-  // ===== CORS DINÂMICO (CORRIGIDO) =====
+  // ===== CORS DINÂMICO =====
   const allowedOrigins = [
     "https://karaokemultiplayer.com.br",
     "https://www.karaokemultiplayer.com.br",
+    "https://karaoke-multiplayer.pages.dev",
     "http://localhost:3000",
     "http://localhost:8080"
   ];
@@ -41,7 +44,6 @@ module.exports = async function handler(req, res) {
   try {
     const { plan, email, metodo } = req.body;
 
-    // ===== VALIDAÇÃO =====
     if (!plan || !email) {
       return res.status(400).json({
         erro: "Plano e email são obrigatórios"
@@ -73,7 +75,6 @@ module.exports = async function handler(req, res) {
           payment_method_id: "pix",
           payer: { email },
 
-          // 🔥 FUNDAMENTAL pro webhook
           external_reference: JSON.stringify({
             email,
             plan
@@ -103,7 +104,6 @@ module.exports = async function handler(req, res) {
 
         payer: { email },
 
-        // 🔥 FUNDAMENTAL pro webhook
         external_reference: JSON.stringify({
           email,
           plan
@@ -135,4 +135,4 @@ module.exports = async function handler(req, res) {
       detalhe: error.message
     });
   }
-};
+}
