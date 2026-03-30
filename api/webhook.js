@@ -1,228 +1,286 @@
-import { MercadoPagoConfig, Payment } from "mercadopago";
-import bcrypt from "bcryptjs";
-import { Resend } from "resend";
-import { createClient } from "@supabase/supabase-js";
+const mercadopago = require('mercadopago');
+const bcrypt = require('bcryptjs');
+const { Resend } = require('resend');
+const { createClient } = require('@supabase/supabase-js');
 
 // ===== CONFIG =====
-const client = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN
+mercadopago.configure({
+    access_token: process.env.MP_ACCESS_TOKEN
 });
 
-const paymentApi = new Payment(client);
-
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
 );
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export default async function handler(req, res) {
-
-  console.log("🚀 WEBHOOK FINAL ATIVO");
-
-  if (req.method !== "POST") {
-    return res.status(200).end();
-  }
-
-  try {
-
-    console.log("📩 Webhook recebido");
-    console.log("BODY:", JSON.stringify(req.body));
-
-    // ================= FILTRO DE EVENTO =================
-    const tipo = req.body?.type || req.query?.type;
-
-    if (tipo && tipo !== "payment") {
-      console.log("⛔ Ignorado (não é pagamento):", tipo);
-      return res.status(200).end();
+// ===== FUNÇÃO AUXILIAR PARA CRIAR TABELA DE LOG (se não existir) =====
+async function ensureTableExists() {
+    const { error } = await supabase
+        .from('pagamentos_processados')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+    
+    if (error && error.message.includes('does not exist')) {
+        console.log('📦 Criando tabela pagamentos_processados...');
+        await supabase.rpc('create_pagamentos_table');
     }
-
-    // ================= PEGAR PAYMENT ID =================
-    const paymentId =
-      req.body?.data?.id ||
-      req.body?.id ||
-      req.query?.id;
-
-    if (!paymentId) {
-      console.log("❌ paymentId não encontrado");
-      return res.status(200).end();
-    }
-
-    console.log("🧾 Payment ID:", paymentId);
-
-    // ================= 🔒 LOCK ANTI-DUPLICAÇÃO =================
-    const { error: lockError } = await supabase
-      .from("pagamentos_processados")
-      .insert({ id: paymentId });
-
-    if (lockError) {
-      console.log("⚠️ Já processado (evitando duplicidade):", paymentId);
-      return res.status(200).end();
-    }
-
-    // ================= BUSCAR PAGAMENTO (RETRY) =================
-    let payment = null;
-
-    for (let i = 0; i < 6; i++) {
-      try {
-
-        console.log(`🔄 Tentativa ${i + 1}...`);
-
-        payment = await paymentApi.get({ id: paymentId });
-
-        if (payment && payment.status) {
-          console.log("✅ Pagamento encontrado");
-          break;
-        }
-
-      } catch (err) {
-
-        if (err.status === 404) {
-          console.log("⏳ Payment ainda não disponível...");
-        } else {
-          console.error("❌ Erro inesperado:", err.message);
-          return res.status(200).end();
-        }
-      }
-
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    if (!payment || !payment.status) {
-      console.log("❌ Não conseguiu obter pagamento");
-      return res.status(200).end();
-    }
-
-    console.log("💳 Status pagamento:", payment.status);
-
-    if (payment.status !== "approved") {
-      console.log("⏳ Pagamento não aprovado");
-      return res.status(200).end();
-    }
-
-    console.log("✅ Pagamento aprovado");
-
-    // ================= DADOS DO CLIENTE =================
-    if (!payment.external_reference) {
-      console.log("❌ external_reference vazio");
-      return res.status(200).end();
-    }
-
-    let email, plan;
-
-    try {
-      const ref = JSON.parse(payment.external_reference);
-      email = ref.email;
-      plan = ref.plan;
-    } catch {
-      console.log("❌ external_reference inválido");
-      return res.status(200).end();
-    }
-
-    if (!email || !plan) {
-      console.log("❌ Dados inválidos");
-      return res.status(200).end();
-    }
-
-    console.log("👤 Cliente:", email);
-    console.log("📦 Plano:", plan);
-
-    // ================= GERAR SENHA =================
-    const senhaTemporaria = Math.random().toString(36).slice(-8);
-    const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
-
-    console.log("🔑 Senha gerada");
-
-    // ================= DEFINIR PRAZO =================
-    let diasPlano = 30;
-    if (plan === "trimestral") diasPlano = 90;
-    if (plan === "semestral") diasPlano = 180;
-    if (plan === "anual") diasPlano = 365;
-
-    const dataExpiracao = new Date();
-    dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
-
-    // ================= USUÁRIO =================
-    const { data: usuarioExistente } = await supabase
-      .from("usuarios")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (usuarioExistente) {
-
-      console.log("🔄 Atualizando usuário");
-
-      await supabase
-        .from("usuarios")
-        .update({
-          plano: plan,
-          status: "ativo",
-          data_expiracao: dataExpiracao,
-          senha_hash: senhaHash
-        })
-        .eq("email", email);
-
-    } else {
-
-      console.log("🆕 Criando usuário");
-
-      await supabase
-        .from("usuarios")
-        .insert({
-          email,
-          senha_hash: senhaHash,
-          plano: plan,
-          status: "ativo",
-          data_expiracao: dataExpiracao
-        });
-    }
-
-    // ================= ENVIAR EMAIL =================
-    try {
-
-      console.log("📧 Enviando e-mail...");
-
-      await resend.emails.send({
-        from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
-        to: email,
-        subject: "🎤 Sua conta está ativa!",
-        html: `
-        <div style="font-family: Arial; max-width:600px; margin:auto">
-          <h2 style="color:#4CAF50">✅ Pagamento aprovado!</h2>
-
-          <p>Seu acesso foi liberado.</p>
-
-          <div style="background:#f5f5f5;padding:20px;border-radius:8px">
-            <p><b>Email:</b> ${email}</p>
-            <p><b>Senha:</b> ${senhaTemporaria}</p>
-            <p><b>Plano:</b> ${plan}</p>
-            <p><b>Expira:</b> ${dataExpiracao.toLocaleDateString("pt-BR")}</p>
-          </div>
-
-          <br>
-
-          <a href="https://karaokemultiplayer.com.br/login.html"
-          style="background:#4CAF50;color:white;padding:12px 24px;text-decoration:none;border-radius:5px">
-          🔐 Entrar
-          </a>
-        </div>
-        `
-      });
-
-      console.log("✅ Email enviado com sucesso");
-
-    } catch (erroEmail) {
-      console.error("❌ Erro ao enviar email:", erroEmail);
-    }
-
-    console.log("🎉 Processo finalizado");
-
-    return res.status(200).json({ sucesso: true });
-
-  } catch (err) {
-    console.error("🔥 Erro no webhook:", err);
-    return res.status(200).end();
-  }
 }
+
+module.exports = async (req, res) => {
+    console.log("🚀 WEBHOOK FINAL ATIVO");
+
+    // Configurar CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+
+    if (req.method !== "POST") {
+        return res.status(200).end();
+    }
+
+    try {
+        console.log("📩 Webhook recebido");
+        console.log("BODY:", JSON.stringify(req.body));
+
+        // ================= FILTRO DE EVENTO =================
+        const tipo = req.body?.type || req.query?.type;
+
+        if (tipo && tipo !== "payment") {
+            console.log("⛔ Ignorado (não é pagamento):", tipo);
+            return res.status(200).end();
+        }
+
+        // ================= PEGAR PAYMENT ID =================
+        const paymentId = req.body?.data?.id || req.body?.id || req.query?.id;
+
+        if (!paymentId) {
+            console.log("❌ paymentId não encontrado");
+            return res.status(200).end();
+        }
+
+        console.log("🧾 Payment ID:", paymentId);
+
+        // ================= 🔒 LOCK ANTI-DUPLICAÇÃO =================
+        // Garantir que a tabela existe
+        await ensureTableExists();
+        
+        try {
+            const { error: lockError } = await supabase
+                .from("pagamentos_processados")
+                .insert({ id: paymentId, processado_em: new Date().toISOString() });
+
+            if (lockError) {
+                console.log("⚠️ Já processado (evitando duplicidade):", paymentId);
+                return res.status(200).end();
+            }
+        } catch (lockErr) {
+            console.log("⚠️ Erro no lock, continuando mesmo assim:", lockErr.message);
+        }
+
+        // ================= BUSCAR PAGAMENTO (RETRY) =================
+        let payment = null;
+
+        for (let i = 0; i < 6; i++) {
+            try {
+                console.log(`🔄 Tentativa ${i + 1}...`);
+
+                // Versão 1.5.14: usar payment.findById
+                const response = await mercadopago.payment.findById(paymentId);
+                payment = response.body;
+
+                if (payment && payment.status) {
+                    console.log("✅ Pagamento encontrado");
+                    break;
+                }
+            } catch (err) {
+                if (err.status === 404 || (err.message && err.message.includes('404'))) {
+                    console.log("⏳ Payment ainda não disponível...");
+                } else {
+                    console.error("❌ Erro inesperado:", err.message);
+                    // Não retorna erro, apenas continua
+                }
+            }
+            await new Promise(r => setTimeout(r, 2000));
+        }
+
+        if (!payment || !payment.status) {
+            console.log("❌ Não conseguiu obter pagamento");
+            return res.status(200).end();
+        }
+
+        console.log("💳 Status pagamento:", payment.status);
+
+        if (payment.status !== "approved") {
+            console.log("⏳ Pagamento não aprovado");
+            return res.status(200).end();
+        }
+
+        console.log("✅ Pagamento aprovado");
+
+        // ================= DADOS DO CLIENTE =================
+        if (!payment.external_reference) {
+            console.log("❌ external_reference vazio");
+            return res.status(200).end();
+        }
+
+        let email, plan;
+
+        try {
+            const ref = JSON.parse(payment.external_reference);
+            email = ref.email;
+            plan = ref.plan;
+        } catch {
+            console.log("❌ external_reference inválido, tentando split");
+            const parts = payment.external_reference.split('|');
+            email = parts[0];
+            plan = parts[1];
+        }
+
+        if (!email || !plan) {
+            console.log("❌ Dados inválidos");
+            return res.status(200).end();
+        }
+
+        console.log("👤 Cliente:", email);
+        console.log("📦 Plano:", plan);
+
+        // ================= GERAR SENHA =================
+        const senhaTemporaria = Math.random().toString(36).slice(-8);
+        const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
+
+        console.log("🔑 Senha gerada:", senhaTemporaria);
+
+        // ================= DEFINIR PRAZO =================
+        let diasPlano = 30;
+        if (plan === "trimestral") diasPlano = 90;
+        if (plan === "semestral") diasPlano = 180;
+        if (plan === "anual") diasPlano = 365;
+
+        const dataExpiracao = new Date();
+        dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
+
+        // ================= USUÁRIO =================
+        const { data: usuarioExistente } = await supabase
+            .from("usuarios")
+            .select("*")
+            .eq("email", email)
+            .maybeSingle();
+
+        if (usuarioExistente) {
+            console.log("🔄 Atualizando usuário existente");
+
+            await supabase
+                .from("usuarios")
+                .update({
+                    plano: plan,
+                    status: "ativo",
+                    data_expiracao: dataExpiracao.toISOString().split('T')[0],
+                    senha_hash: senhaHash,
+                    ultimo_pagamento: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .eq("email", email);
+
+        } else {
+            console.log("🆕 Criando novo usuário");
+
+            await supabase
+                .from("usuarios")
+                .insert({
+                    email,
+                    senha_hash: senhaHash,
+                    nome: email.split('@')[0],
+                    plano: plan,
+                    status: "ativo",
+                    data_expiracao: dataExpiracao.toISOString().split('T')[0],
+                    ultimo_pagamento: new Date().toISOString(),
+                    created_at: new Date().toISOString()
+                });
+        }
+
+        // ================= ENVIAR EMAIL =================
+        try {
+            console.log("📧 Enviando e-mail...");
+
+            const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
+
+            await resend.emails.send({
+                from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
+                to: email,
+                subject: "🎤 Sua conta está ativa!",
+                html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background: linear-gradient(135deg, #FF4D94, #6C63FF); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                        .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+                        .info-box { background: white; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #FF4D94; }
+                        .code { background: #e8f5e9; padding: 15px; text-align: center; font-size: 24px; font-family: monospace; border-radius: 5px; color: #2e7d32; }
+                        .button { background: #FF4D94; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; }
+                        .footer { text-align: center; padding: 15px; color: #666; font-size: 12px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h2>🎤 Pagamento Confirmado!</h2>
+                            <p>Seu acesso está liberado</p>
+                        </div>
+                        <div class="content">
+                            <h3>Olá ${email.split('@')[0]}!</h3>
+                            <p>Recebemos a confirmação do seu pagamento com sucesso.</p>
+                            
+                            <div class="info-box">
+                                <p><strong>📋 Plano:</strong> ${plan}</p>
+                                <p><strong>📅 Expira em:</strong> ${dataFormatada}</p>
+                            </div>
+
+                            <h3>🔑 SUAS CREDENCIAIS DE ACESSO</h3>
+                            <div class="info-box">
+                                <p><strong>📧 E-mail:</strong> ${email}</p>
+                                <p><strong>🔐 Senha:</strong> <span class="code">${senhaTemporaria}</span></p>
+                            </div>
+                            
+                            <p style="color: #e67e22;"><strong>⚠️ Importante:</strong> Troque sua senha após o primeiro acesso.</p>
+                            
+                            <div style="text-align: center;">
+                                <a href="https://karaokemultiplayer.com.br/login.html" class="button">
+                                    🎤 ACESSAR KARAOKÊ PREMIUM
+                                </a>
+                            </div>
+                        </div>
+                        <div class="footer">
+                            <p>© 2026 Karaokê Multiplayer. Todos os direitos reservados.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                `
+            });
+
+            console.log("✅ Email enviado com sucesso");
+
+        } catch (erroEmail) {
+            console.error("❌ Erro ao enviar email:", erroEmail.message);
+            // Não falha o processo por erro de email
+        }
+
+        console.log("🎉 Processo finalizado com sucesso");
+
+        return res.status(200).json({ sucesso: true });
+
+    } catch (err) {
+        console.error("🔥 Erro no webhook:", err);
+        return res.status(200).end();
+    }
+};
