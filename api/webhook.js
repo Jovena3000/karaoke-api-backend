@@ -42,6 +42,35 @@ async function ensureTableExists() {
     return true;
 }
 
+if (topic === "merchant_order") {
+    const merchantOrderId = req.body?.data?.id || req.query?.id;
+
+    if (!merchantOrderId) return res.status(200).end();
+
+    console.log("📦 Merchant Order:", merchantOrderId);
+
+    const response = await fetch(`https://api.mercadopago.com/merchant_orders/${merchantOrderId}`, {
+        headers: {
+            Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
+        }
+    });
+
+    const order = await response.json();
+
+    const approved = order.payments?.find(p => p.status === "approved");
+
+    if (!approved) {
+        console.log("⏳ Ainda não aprovado");
+        return res.status(200).end();
+    }
+
+    const paymentId = approved.id;
+
+    console.log("💳 Payment via merchant_order:", paymentId);
+
+    // segue fluxo normal (reutiliza lógica)
+}
+
 // ================= FUNÇÃO AUXILIAR PARA PROCESSAR PAGAMENTO =================
 async function processarPagamentoAprovado(email, plan, paymentId = null, merchantOrderId = null) {
     console.log(`💰 Processando pagamento para ${email}`);
