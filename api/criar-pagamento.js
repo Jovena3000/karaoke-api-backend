@@ -1,13 +1,13 @@
-import mercadopago from 'mercadopago';
+// api/criar-pagamento.js
+const mercadopago = require('mercadopago');
 
-// ================= CONFIG =================
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
 
-export default async function handler(req, res) {
-    // ================= CORS =================
-    res.setHeader('Access-Control-Allow-Origin', '*');
+module.exports = async (req, res) => {
+    // Configurar CORS
+    res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -16,97 +16,141 @@ export default async function handler(req, res) {
     }
 
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Método não permitido' });
+        return res.status(405).json({ erro: 'Método não permitido' });
     }
 
     try {
-        console.log("📩 Criar pagamento iniciado");
+        const { plan, email, metodo } = req.body;
 
-        const { title, price, plan, email } = req.body;
+        console.log('📩 Criar pagamento iniciado');
+        console.log('💰 Dados:', { email, plan, metodo });
 
-        // ================= VALIDAÇÃO =================
-        if (!email || !plan) {
-            console.log("❌ Dados faltando:", { email, plan });
-            return res.status(400).json({
-                erro: "Email e plano são obrigatórios"
-            });
+        // Definir valor do plano
+        let valor = 0;
+        let descricao = '';
+
+        switch (plan) {
+            case 'mensal':
+                valor = 5.00;
+                descricao = 'Plano Mensal - Karaokê Multiplayer';
+                break;
+            case 'trimestral':
+                valor = 24.90;
+                descricao = 'Plano Trimestral - Karaokê Multiplayer';
+                break;
+            case 'semestral':
+                valor = 49.90;
+                descricao = 'Plano Semestral - Karaokê Multiplayer';
+                break;
+            case 'anual':
+                valor = 89.90;
+                descricao = 'Plano Anual - Karaokê Multiplayer';
+                break;
+            default:
+                valor = 24.90;
+                descricao = 'Plano Trimestral - Karaokê Multiplayer';
         }
 
-        const planosValidos = ['mensal', 'trimestral', 'semestral', 'anual'];
+        // ================= CONFIGURAÇÃO PARA PIX =================
+        if (metodo === 'pix') {
+            console.log('💳 Gerando pagamento PIX...');
 
-        if (!planosValidos.includes(plan)) {
-            console.log("❌ Plano inválido:", plan);
-            return res.status(400).json({
-                erro: "Plano inválido"
-            });
-        }
-
-        // ================= PREÇOS =================
-        const prices = {
-            mensal: 5.00,
-            trimestral: 24.90,
-            semestral: 49.90,
-            anual: 89.90
-        };
-
-        const valor = price ? parseFloat(price) : prices[plan];
-
-        if (!valor || isNaN(valor)) {
-            console.log("❌ Valor inválido:", valor);
-            return res.status(400).json({
-                erro: "Valor inválido"
-            });
-        }
-
-        const titulo = title || `Plano ${plan} - Karaokê Multiplayer`;
-
-        console.log("💰 Criando pagamento:", { email, plan, valor });
-
-        // ================= PREFERENCE =================
-        const preference = {
-            items: [
-                {
-                    title: titulo,
-                    unit_price: valor,
-                    quantity: 1,
-                    currency_id: 'BRL',
-                    description: `Plano ${plan}`
+            const paymentData = {
+                transaction_amount: valor,
+                description: descricao,
+                payment_method_id: 'pix',
+                payer: {
+                    email: email,
+                    first_name: email.split('@')[0],
+                    last_name: 'Usuário'
+                },
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+                external_reference: JSON.stringify({ email, plan }),
+                metadata: {
+                    email: email,
+                    plan: plan
                 }
-            ],
-            payer: {
-                email: email
-            },
-            back_urls: {
-                success: 'https://karaokemultiplayer.com.br/pagamento-sucesso.html',
-                failure: 'https://karaokemultiplayer.com.br/erro.html',
-                pending: 'https://karaokemultiplayer.com.br/pendente.html'
-            },
-            auto_return: 'approved',
+            };
 
-            // 🔥 MUITO IMPORTANTE
-            notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+            console.log('📤 Enviando para Mercado Pago:', JSON.stringify(paymentData));
 
-            // 🔥 PADRÃO CORRETO PARA SEU WEBHOOK
-            external_reference: `${email}|${plan}`
-        };
+            const response = await mercadopago.payment.create(paymentData);
+            const payment = response.body;
 
-        // ================= CRIAR PAGAMENTO =================
-        const response = await mercadopago.preferences.create(preference);
+            console.log('✅ Pagamento PIX criado. ID:', payment.id);
+            console.log('📱 Status:', payment.status);
+            console.log('📱 QR Code gerado:', payment.point_of_interaction?.transaction_data?.qr_code_base64 ? 'SIM' : 'NÃO');
 
-        console.log("✅ Preferência criada:", response.body.id);
+            // Extrair dados do PIX
+            const qrCodeBase64 = payment.point_of_interaction?.transaction_data?.qr_code_base64 || null;
+            const qrCodeText = payment.point_of_interaction?.transaction_data?.qr_code || null;
 
-        return res.status(200).json({
-            sucesso: true,
-            id: response.body.id,
-            init_point: response.body.init_point
-        });
+            if (!qrCodeBase64) {
+                console.error('❌ ERRO: QR Code não veio na resposta do Mercado Pago');
+                console.log('📱 Resposta completa:', JSON.stringify(payment, null, 2));
+            }
+
+            return res.status(200).json({
+                sucesso: true,
+                id: payment.id,
+                metodo: 'pix',
+                qr_code_base64: qrCodeBase64,
+                qr_code: qrCodeText,
+                status: payment.status
+            });
+        }
+
+        // ================= CONFIGURAÇÃO PARA CARTÃO DE CRÉDITO =================
+        if (metodo === 'card') {
+            console.log('💳 Gerando preferência para cartão...');
+
+            const preference = {
+                items: [
+                    {
+                        title: descricao,
+                        quantity: 1,
+                        currency_id: 'BRL',
+                        unit_price: valor
+                    }
+                ],
+                payer: {
+                    email: email,
+                    name: email.split('@')[0],
+                    surname: 'Usuário'
+                },
+                back_urls: {
+                    success: 'https://karaokemultiplayer.com.br/checkout.html',
+                    failure: 'https://karaokemultiplayer.com.br/checkout.html',
+                    pending: 'https://karaokemultiplayer.com.br/checkout.html'
+                },
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+                external_reference: JSON.stringify({ email, plan }),
+                auto_return: 'approved'
+            };
+
+            const response = await mercadopago.preferences.create(preference);
+            const preferenceId = response.body.id;
+
+            console.log('✅ Preferência criada:', preferenceId);
+
+            return res.status(200).json({
+                sucesso: true,
+                metodo: 'card',
+                init_point: response.body.init_point,
+                preference_id: preferenceId
+            });
+        }
+
+        return res.status(400).json({ sucesso: false, erro: 'Método de pagamento inválido' });
 
     } catch (error) {
-        console.error("🔥 ERRO REAL:", error);
-
+        console.error('❌ Erro ao criar pagamento:', error);
+        console.error('Detalhes:', error.response?.data || error.message);
+        
         return res.status(500).json({
-            erro: "Erro ao criar pagamento",
-            detalhe: error.message
+            sucesso: false,
+            erro: error.message || 'Erro ao processar pagamento',
+            detalhes: error.response?.data
         });
     }
-}
+};
