@@ -5,14 +5,41 @@ mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
 
-module.exports = async (req, res) => {
-    // Configurar CORS
-    res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
+// ===== FUNÇÃO PARA CONFIGURAR CORS =====
+function configurarCORS(req, res) {
+    const allowedOrigins = [
+        'https://karaokemultiplayer.com.br',
+        'https://www.karaokemultiplayer.com.br',
+        'http://localhost:3000'
+    ];
+    
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
+    }
+    
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    // Se for OPTIONS, responde e retorna true
     if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+        res.status(200).end();
+        return true;
+    }
+    return false;
+}
+
+module.exports = async (req, res) => {
+    console.log("🚀 CREATE PAYMENT INICIADO");
+    console.log("📝 Method:", req.method);
+    console.log("📝 Origin:", req.headers.origin);
+
+    // Configurar CORS (se for OPTIONS, já responde)
+    if (configurarCORS(req, res)) {
+        return;
     }
 
     if (req.method !== 'POST') {
@@ -35,19 +62,19 @@ module.exports = async (req, res) => {
                 descricao = 'Plano Mensal - Karaokê Multiplayer';
                 break;
             case 'trimestral':
-                valor = 24.90;
+                valor = 49.90;
                 descricao = 'Plano Trimestral - Karaokê Multiplayer';
                 break;
             case 'semestral':
-                valor = 49.90;
+                valor = 89.90;
                 descricao = 'Plano Semestral - Karaokê Multiplayer';
                 break;
             case 'anual':
-                valor = 89.90;
+                valor = 159.90;
                 descricao = 'Plano Anual - Karaokê Multiplayer';
                 break;
             default:
-                valor = 24.90;
+                valor = 49.90;
                 descricao = 'Plano Trimestral - Karaokê Multiplayer';
         }
 
