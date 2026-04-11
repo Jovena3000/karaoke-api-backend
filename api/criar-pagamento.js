@@ -146,10 +146,10 @@ module.exports = async (req, res) => {
                     surname: 'Usuário'
                 },
                 back_urls: {
-                    success: 'https://karaokemultiplayer.com.br/checkout.html',
-                    failure: 'https://karaokemultiplayer.com.br/checkout.html',
-                    pending: 'https://karaokemultiplayer.com.br/checkout.html'
-                },
+    success: 'https://karaokemultiplayer.com.br/sucesso.html',
+    failure: 'https://karaokemultiplayer.com.br/erro.html',
+    pending: 'https://karaokemultiplayer.com.br/pendente.html'
+},
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
                 external_reference: JSON.stringify({ email, plan }),
                 auto_return: 'approved'
