@@ -254,9 +254,9 @@ module.exports = async (req, res) => {
                 const valor = approvedPayment.transaction_amount;
                 let plan = "trimestral";
                 if (valor === 5.00) plan = "mensal";
-                else if (valor === 24.90) plan = "trimestral";
-                else if (valor === 49.90) plan = "semestral";
-                else if (valor === 89.90) plan = "anual";
+                else if (valor === 49.90) plan = "trimestral";
+                else if (valor === 89.90) plan = "semestral";
+                else if (valor === 159.90) plan = "anual";
                 
                 console.log(`✅ Pagamento aprovado para ${email} | Plano: ${plan} | Valor: R$ ${valor}`);
                 
