@@ -92,7 +92,7 @@ module.exports = async (req, res) => {
                     last_name: 'Usuário'
                 },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: JSON.stringify({ email, plan }),
+                external_reference: `${email}|${plan}`
                 metadata: {
                     email: email,
                     plan: plan
@@ -151,7 +151,7 @@ module.exports = async (req, res) => {
     pending: 'https://karaokemultiplayer.com.br/pendente.html'
 },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: JSON.stringify({ email, plan }),
+                external_reference: `${email}|${plan}`
                 auto_return: 'approved'
             };
 
