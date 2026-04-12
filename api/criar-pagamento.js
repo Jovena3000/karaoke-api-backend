@@ -5,42 +5,38 @@ mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
 
-// ===== FUNÇÃO PARA CONFIGURAR CORS =====
+// ===== CORS =====
 function configurarCORS(req, res) {
     const allowedOrigins = [
         'https://karaokemultiplayer.com.br',
         'https://www.karaokemultiplayer.com.br',
         'http://localhost:3000'
     ];
-    
+
     const origin = req.headers.origin;
+
     if (allowedOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
     } else {
         res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
     }
-    
+
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    
-    // Se for OPTIONS, responde e retorna true
+
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return true;
     }
+
     return false;
 }
 
 module.exports = async (req, res) => {
-    console.log("🚀 CREATE PAYMENT INICIADO");
-    console.log("📝 Method:", req.method);
-    console.log("📝 Origin:", req.headers.origin);
+    console.log("🚀 CREATE PAYMENT");
 
-    // Configurar CORS (se for OPTIONS, já responde)
-    if (configurarCORS(req, res)) {
-        return;
-    }
+    if (configurarCORS(req, res)) return;
 
     if (req.method !== 'POST') {
         return res.status(405).json({ erro: 'Método não permitido' });
@@ -49,89 +45,70 @@ module.exports = async (req, res) => {
     try {
         const { plan, email, metodo } = req.body;
 
-        console.log('📩 Criar pagamento iniciado');
-        console.log('💰 Dados:', { email, plan, metodo });
+        console.log('📩 Dados recebidos:', { email, plan, metodo });
 
-        // Definir valor do plano
+        // ===== PLANOS =====
         let valor = 0;
         let descricao = '';
 
         switch (plan) {
             case 'mensal':
                 valor = 5.00;
-                descricao = 'Plano Mensal - Karaokê Multiplayer';
+                descricao = 'Plano Mensal';
                 break;
             case 'trimestral':
                 valor = 49.90;
-                descricao = 'Plano Trimestral - Karaokê Multiplayer';
+                descricao = 'Plano Trimestral';
                 break;
             case 'semestral':
                 valor = 89.90;
-                descricao = 'Plano Semestral - Karaokê Multiplayer';
+                descricao = 'Plano Semestral';
                 break;
             case 'anual':
                 valor = 159.90;
-                descricao = 'Plano Anual - Karaokê Multiplayer';
+                descricao = 'Plano Anual';
                 break;
             default:
-                valor = 49.90;
-                descricao = 'Plano Trimestral - Karaokê Multiplayer';
+                throw new Error("Plano inválido");
         }
 
-        // ================= CONFIGURAÇÃO PARA PIX =================
+        // ================= PIX =================
         if (metodo === 'pix') {
-            console.log('💳 Gerando pagamento PIX...');
+            console.log('💳 Criando PIX...');
 
-            const paymentData = {
+            const payment = await mercadopago.payment.create({
                 transaction_amount: valor,
                 description: descricao,
                 payment_method_id: 'pix',
                 payer: {
                     email: email,
                     first_name: email.split('@')[0],
-                    last_name: 'Usuário'
+                    last_name: 'User'
                 },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: `${email}|${plan}`
+                external_reference: `${email}|${plan}`, // ✅ FIX
                 metadata: {
-                    email: email,
-                    plan: plan
+                    email,
+                    plan
                 }
-            };
+            });
 
-            console.log('📤 Enviando para Mercado Pago:', JSON.stringify(paymentData));
-
-            const response = await mercadopago.payment.create(paymentData);
-            const payment = response.body;
-
-            console.log('✅ Pagamento PIX criado. ID:', payment.id);
-            console.log('📱 Status:', payment.status);
-            console.log('📱 QR Code gerado:', payment.point_of_interaction?.transaction_data?.qr_code_base64 ? 'SIM' : 'NÃO');
-
-            // Extrair dados do PIX
-            const qrCodeBase64 = payment.point_of_interaction?.transaction_data?.qr_code_base64 || null;
-            const qrCodeText = payment.point_of_interaction?.transaction_data?.qr_code || null;
-
-            if (!qrCodeBase64) {
-                console.error('❌ ERRO: QR Code não veio na resposta do Mercado Pago');
-                console.log('📱 Resposta completa:', JSON.stringify(payment, null, 2));
-            }
+            const data = payment.body;
 
             return res.status(200).json({
                 sucesso: true,
-                id: payment.id,
                 metodo: 'pix',
-                qr_code_base64: qrCodeBase64,
-                qr_code: qrCodeText,
-                status: payment.status
+                id: data.id,
+                qr_code: data.point_of_interaction?.transaction_data?.qr_code,
+                qr_code_base64: data.point_of_interaction?.transaction_data?.qr_code_base64
             });
         }
 
-        // ================= CONFIGURAÇÃO PARA CARTÃO DE CRÉDITO =================
+        // ================= CARTÃO =================
         if (metodo === 'card') {
-            console.log('💳 Gerando preferência para cartão...');
+            console.log('💳 Criando checkout cartão...');
 
-            const preference = {
+            const preference = await mercadopago.preferences.create({
                 items: [
                     {
                         title: descricao,
@@ -141,43 +118,37 @@ module.exports = async (req, res) => {
                     }
                 ],
                 payer: {
-                    email: email,
-                    name: email.split('@')[0],
-                    surname: 'Usuário'
+                    email: email
                 },
                 back_urls: {
-    success: 'https://karaokemultiplayer.com.br/sucesso.html',
-    failure: 'https://karaokemultiplayer.com.br/erro.html',
-    pending: 'https://karaokemultiplayer.com.br/pendente.html'
-},
+                    success: 'https://karaokemultiplayer.com.br/sucesso.html',
+                    failure: 'https://karaokemultiplayer.com.br/erro.html',
+                    pending: 'https://karaokemultiplayer.com.br/pendente.html'
+                },
+                auto_return: 'approved',
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: `${email}|${plan}`
-                auto_return: 'approved'
-            };
-
-            const response = await mercadopago.preferences.create(preference);
-            const preferenceId = response.body.id;
-
-            console.log('✅ Preferência criada:', preferenceId);
+                external_reference: `${email}|${plan}`, // ✅ FIX
+                binary_mode: true // ⭐ ESSENCIAL PARA CARTÃO FUNCIONAR
+            });
 
             return res.status(200).json({
                 sucesso: true,
                 metodo: 'card',
-                init_point: response.body.init_point,
-                preference_id: preferenceId
+                init_point: preference.body.init_point
             });
         }
 
-        return res.status(400).json({ sucesso: false, erro: 'Método de pagamento inválido' });
+        return res.status(400).json({
+            sucesso: false,
+            erro: 'Método inválido'
+        });
 
     } catch (error) {
-        console.error('❌ Erro ao criar pagamento:', error);
-        console.error('Detalhes:', error.response?.data || error.message);
-        
+        console.error('❌ ERRO:', error.message);
+
         return res.status(500).json({
             sucesso: false,
-            erro: error.message || 'Erro ao processar pagamento',
-            detalhes: error.response?.data
+            erro: error.message
         });
     }
 };
