@@ -2,6 +2,7 @@ const mercadopago = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
 const { createClient } = require('@supabase/supabase-js');
+const fetch = require("node-fetch");
 
 // ===== CONFIG =====
 mercadopago.configure({
@@ -301,26 +302,32 @@ module.exports = async (req, res) => {
             console.log("💳 Método pagamento:", payment.payment_method_id);
             console.log("💳 Valor:", payment.transaction_amount);
             
-            if (payment.status !== "approved") {
-                console.log("⏳ Pagamento não aprovado. Status:", payment.status);
-                return res.status(200).end();
-            }
+            if (!(payment.status === "approved" && payment.status_detail === "accredited")) {
+    console.log("⏳ Pagamento ainda não confirmado totalmente");
+    return res.status(200).end();
+}
+
+console.log("✅ Pagamento confirmado de verdade");
             
             // Extrair email
             let email = null;
             let plan = null;
             
             if (payment.external_reference) {
-                try {
-                    const ref = JSON.parse(payment.external_reference);
-                    email = ref.email;
-                    plan = ref.plan;
-                } catch {
-                    const parts = payment.external_reference.split('|');
-                    email = parts[0];
-                    plan = parts[1];
-                }
-            }
+    if (payment.external_reference.includes('|')) {
+        const parts = payment.external_reference.split('|');
+        email = parts[0];
+        plan = parts[1];
+    } else {
+        try {
+            const ref = JSON.parse(payment.external_reference);
+            email = ref.email;
+            plan = ref.plan;
+        } catch (e) {
+            console.log("⚠️ external_reference inválido");
+        }
+    }
+}
             
             if (!email && payment.payer?.email) {
                 email = payment.payer.email;
