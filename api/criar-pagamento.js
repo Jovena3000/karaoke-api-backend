@@ -106,31 +106,41 @@ module.exports = async (req, res) => {
 
         // ================= CARTÃO =================
         if (metodo === 'card') {
-            console.log('💳 Criando checkout cartão...');
+    console.log('💳 Processando cartão transparente...');
 
-            const preference = await mercadopago.preferences.create({
-                items: [
-                    {
-                        title: descricao,
-                        quantity: 1,
-                        currency_id: 'BRL',
-                        unit_price: valor
-                    }
-                ],
-                payer: {
-                    email: email
-                },
-                back_urls: {
-                    success: 'https://karaokemultiplayer.com.br/sucesso.html',
-                    failure: 'https://karaokemultiplayer.com.br/erro.html',
-                    pending: 'https://karaokemultiplayer.com.br/pendente.html'
-                },
-                auto_return: 'approved',
-                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: `${email}|${plan}`, // ✅ FIX
-                binary_mode: true // ⭐ ESSENCIAL PARA CARTÃO FUNCIONAR
-            });
+    const { token, email, plan } = req.body;
 
+    if (!token) {
+        return res.status(400).json({
+            sucesso: false,
+            erro: 'Token do cartão não enviado'
+        });
+    }
+
+    const paymentData = {
+        transaction_amount: valor,
+        token: token,
+        description: descricao,
+        installments: 1,
+        payment_method_id: 'visa', // pode ajustar depois
+        payer: {
+            email: email
+        },
+        notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+        external_reference: JSON.stringify({ email, plan })
+    };
+
+    const response = await mercadopago.payment.create(paymentData);
+    const payment = response.body;
+
+    console.log('💳 STATUS:', payment.status);
+
+    return res.status(200).json({
+        sucesso: payment.status === 'approved',
+        status: payment.status,
+        detalhe: payment.status_detail
+    });
+}
             return res.status(200).json({
                 sucesso: true,
                 metodo: 'card',
