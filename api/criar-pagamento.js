@@ -1,30 +1,20 @@
 // api/criar-pagamento.js
 const mercadopago = require('mercadopago');
 
+// Configurar o Mercado Pago
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
 
+// Handler principal
 module.exports = async (req, res) => {
-    // Configurar CORS manualmente
-    const allowedOrigins = [
-        'https://karaokemultiplayer.com.br',
-        'https://www.karaokemultiplayer.com.br',
-        'http://localhost:3000'
-    ];
-    
-    const origin = req.headers.origin;
-    if (allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-        res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
-    }
-    
+    // Configurar CORS
+    res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     
-    // Responder OPTIONS (preflight)
+    // Responder preflight
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -37,11 +27,11 @@ module.exports = async (req, res) => {
     try {
         const { plan, email, metodo, token, valor } = req.body;
         
-        console.log('📩 Criar pagamento:', { email, plan, metodo });
+        console.log('📩 Recebido:', { email, plan, metodo, hasToken: !!token });
         
         // Validar email
-        if (!email || !email.includes('@')) {
-            return res.status(400).json({ sucesso: false, erro: 'E-mail inválido' });
+        if (!email) {
+            return res.status(400).json({ sucesso: false, erro: 'E-mail não informado' });
         }
         
         // Definir valor do plano
@@ -103,6 +93,7 @@ module.exports = async (req, res) => {
             });
             
             const paymentData = payment.body;
+            
             console.log('💳 Status:', paymentData.status);
             
             if (paymentData.status === 'approved') {
@@ -124,11 +115,10 @@ module.exports = async (req, res) => {
         
     } catch (error) {
         console.error('❌ Erro:', error.message);
-        console.error('Detalhe:', error.response?.data || error);
         
         return res.status(500).json({
             sucesso: false,
-            erro: error.message || 'Erro interno'
+            erro: error.message || 'Erro interno do servidor'
         });
     }
 };
