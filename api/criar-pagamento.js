@@ -1,20 +1,29 @@
 // api/criar-pagamento.js
 const mercadopago = require('mercadopago');
 
-// Configurar o Mercado Pago
-mercadopago.configure({
-    access_token: process.env.MP_ACCESS_TOKEN
-});
+// Configurar apenas se tiver token
+if (process.env.MP_ACCESS_TOKEN) {
+    mercadopago.configure({
+        access_token: process.env.MP_ACCESS_TOKEN
+    });
+    console.log('✅ Mercado Pago configurado');
+} else {
+    console.log('⚠️ MP_ACCESS_TOKEN não configurado');
+}
 
-// Handler principal
 module.exports = async (req, res) => {
     // Configurar CORS
-    res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
+    const origin = req.headers.origin;
+    if (origin === 'https://karaokemultiplayer.com.br' || origin === 'https://www.karaokemultiplayer.com.br') {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
+    }
+    
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
     
-    // Responder preflight
+    // OPTIONS
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -25,16 +34,16 @@ module.exports = async (req, res) => {
     }
     
     try {
-        const { plan, email, metodo, token, valor } = req.body;
+        const { plan, email, metodo, token } = req.body;
         
-        console.log('📩 Recebido:', { email, plan, metodo, hasToken: !!token });
+        console.log('📩 Dados:', { email, plan, metodo, hasToken: !!token });
         
         // Validar email
         if (!email) {
             return res.status(400).json({ sucesso: false, erro: 'E-mail não informado' });
         }
         
-        // Definir valor do plano
+        // Valores dos planos
         const valores = {
             mensal: 5.00,
             trimestral: 49.90,
@@ -42,73 +51,56 @@ module.exports = async (req, res) => {
             anual: 159.90
         };
         
-        const valorFinal = valor || valores[plan] || 49.90;
-        const descricao = `Plano ${plan} - Karaokê Multiplayer`;
+        const valor = valores[plan] || 49.90;
         
         // ================= PIX =================
         if (metodo === 'pix') {
-            console.log('💳 Gerando PIX...');
+            console.log('💳 Gerando PIX para:', email);
             
-            const payment = await mercadopago.payment.create({
-                transaction_amount: valorFinal,
-                description: descricao,
+            const response = await mercadopago.payment.create({
+                transaction_amount: valor,
+                description: `Plano ${plan} - Karaokê Multiplayer`,
                 payment_method_id: 'pix',
-                payer: {
-                    email: email,
-                    first_name: email.split('@')[0],
-                    last_name: 'Cliente'
-                },
-                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: JSON.stringify({ email, plan })
+                payer: { email: email },
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook'
             });
             
-            const data = payment.body;
+            const payment = response.body;
             
             return res.status(200).json({
                 sucesso: true,
                 metodo: 'pix',
-                id: data.id,
-                qr_code: data.point_of_interaction?.transaction_data?.qr_code,
-                qr_code_base64: data.point_of_interaction?.transaction_data?.qr_code_base64
+                id: payment.id,
+                qr_code: payment.point_of_interaction?.transaction_data?.qr_code,
+                qr_code_base64: payment.point_of_interaction?.transaction_data?.qr_code_base64
             });
         }
         
         // ================= CARTÃO =================
         if (metodo === 'card') {
-            console.log('💳 Processando cartão...');
+            console.log('💳 Processando cartão para:', email);
             
             if (!token) {
-                return res.status(400).json({ sucesso: false, erro: 'Token do cartão não enviado' });
+                return res.status(400).json({ sucesso: false, erro: 'Token não enviado' });
             }
             
-            const payment = await mercadopago.payment.create({
-                transaction_amount: valorFinal,
+            const response = await mercadopago.payment.create({
+                transaction_amount: valor,
                 token: token,
-                description: descricao,
+                description: `Plano ${plan} - Karaokê Multiplayer`,
                 installments: 1,
                 payment_method_id: 'visa',
                 payer: { email: email },
-                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: JSON.stringify({ email, plan })
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook'
             });
             
-            const paymentData = payment.body;
+            const payment = response.body;
             
-            console.log('💳 Status:', paymentData.status);
-            
-            if (paymentData.status === 'approved') {
-                return res.status(200).json({
-                    sucesso: true,
-                    status: 'approved',
-                    id: paymentData.id
-                });
-            } else {
-                return res.status(200).json({
-                    sucesso: false,
-                    status: paymentData.status,
-                    detalhe: paymentData.status_detail
-                });
-            }
+            return res.status(200).json({
+                sucesso: payment.status === 'approved',
+                status: payment.status,
+                id: payment.id
+            });
         }
         
         return res.status(400).json({ sucesso: false, erro: 'Método inválido' });
@@ -118,7 +110,7 @@ module.exports = async (req, res) => {
         
         return res.status(500).json({
             sucesso: false,
-            erro: error.message || 'Erro interno do servidor'
+            erro: error.message
         });
     }
 };
