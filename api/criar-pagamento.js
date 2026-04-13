@@ -54,19 +54,19 @@ module.exports = async (req, res) => {
         switch (plan) {
             case 'mensal':
                 valor = 5.00;
-                descricao = 'Plano Mensal';
+                descricao = 'Plano Mensal - Karaokê Multiplayer';
                 break;
             case 'trimestral':
                 valor = 49.90;
-                descricao = 'Plano Trimestral';
+                descricao = 'Plano Trimestral - Karaokê Multiplayer';
                 break;
             case 'semestral':
                 valor = 89.90;
-                descricao = 'Plano Semestral';
+                descricao = 'Plano Semestral - Karaokê Multiplayer';
                 break;
             case 'anual':
                 valor = 159.90;
-                descricao = 'Plano Anual';
+                descricao = 'Plano Anual - Karaokê Multiplayer';
                 break;
             default:
                 throw new Error("Plano inválido");
@@ -86,7 +86,7 @@ module.exports = async (req, res) => {
                     last_name: 'User'
                 },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: `${email}|${plan}`, // ✅ FIX
+                external_reference: `${email}|${plan}`,
                 metadata: {
                     email,
                     plan
@@ -104,61 +104,59 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ================= CARTÃO =================
+        // ================= CARTÃO (CHECKOUT TRANSPARENTE) =================
         if (metodo === 'card') {
-    console.log('💳 Processando cartão transparente...');
+            console.log('💳 Processando cartão transparente...');
 
-    const { token, email, plan } = req.body;
+            const { token } = req.body;
 
-    if (!token) {
-        return res.status(400).json({
-            sucesso: false,
-            erro: 'Token do cartão não enviado'
-        });
-    }
+            if (!token) {
+                return res.status(400).json({
+                    sucesso: false,
+                    erro: 'Token do cartão não enviado'
+                });
+            }
 
-    const paymentData = {
-        transaction_amount: valor,
-        token: token,
-        description: descricao,
-        installments: 1,
-        payment_method_id: 'visa', // pode ajustar depois
-        payer: {
-            email: email
-        },
-        notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-        external_reference: JSON.stringify({ email, plan })
-    };
+            const paymentData = {
+                transaction_amount: valor,
+                token: token,
+                description: descricao,
+                installments: 1,
+                payment_method_id: 'visa',
+                payer: {
+                    email: email
+                },
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+                external_reference: JSON.stringify({ email, plan })
+            };
 
-    const response = await mercadopago.payment.create(paymentData);
-    const payment = response.body;
+            const response = await mercadopago.payment.create(paymentData);
+            const payment = response.body;
 
-    console.log('💳 STATUS:', payment.status);
+            console.log('💳 STATUS:', payment.status);
+            console.log('💳 DETALHE:', payment.status_detail);
 
-    return res.status(200).json({
-        sucesso: payment.status === 'approved',
-        status: payment.status,
-        detalhe: payment.status_detail
-    });
-}
+            // ✅ RETORNO ÚNICO PARA CARTÃO
             return res.status(200).json({
-                sucesso: true,
-                metodo: 'card',
-                init_point: preference.body.init_point
+                sucesso: payment.status === 'approved',
+                status: payment.status,
+                detalhe: payment.status_detail
             });
         }
 
+        // ================= MÉTODO INVÁLIDO =================
         return res.status(400).json({
             sucesso: false,
-            erro: 'Método inválido'
+            erro: 'Método de pagamento inválido'
         });
 
     } catch (error) {
         console.error('❌ ERRO:', error.message);
+        console.error('📦 Detalhes:', error.response?.data || error);
 
         return res.status(500).json({
             sucesso: false,
-            erro: error.message
+            erro: error.message || 'Erro interno do servidor'
         });
     }
 };
