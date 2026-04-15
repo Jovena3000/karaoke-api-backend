@@ -236,7 +236,7 @@ module.exports = async (req, res) => {
         
         console.log("📌 Evento recebido:", { action, type, topic, dataId });
 
-        // ================= PROCESSAR PAYMENT (PIX e CARTÃO) =================
+               // ================= PROCESSAR PAYMENT (PIX e CARTÃO) =================
         if (type === "payment" || topic === "payment" || action === "payment.created" || action === "payment.updated") {
             const paymentId = dataId || req.body?.id;
             
@@ -298,47 +298,73 @@ module.exports = async (req, res) => {
             }
             
             console.log("💳 Status pagamento:", payment.status);
+            console.log("💳 Status detalhe:", payment.status_detail);
             console.log("💳 Método pagamento:", payment.payment_method_id);
             console.log("💳 Valor:", payment.transaction_amount);
+            console.log("🔑 external_reference:", payment.external_reference);
             
-            if (!(payment.status === "approved" && payment.status_detail === "accredited")) {
-    console.log("⏳ Pagamento ainda não confirmado totalmente");
-    return res.status(200).end();
-}
-
-console.log("✅ Pagamento confirmado de verdade");
+            // ✅ VERIFICAÇÃO CORRIGIDA - apenas status approved
+            if (payment.status !== "approved") {
+                console.log("⏳ Pagamento ainda não aprovado. Status:", payment.status);
+                return res.status(200).end();
+            }
             
-            // Extrair email
+            console.log("✅ Pagamento aprovado!");
+            
+            // Extrair email e plano
             let email = null;
             let plan = null;
             
+            // Tentativa 1: external_reference
             if (payment.external_reference) {
-    if (payment.external_reference.includes('|')) {
-        const parts = payment.external_reference.split('|');
-        email = parts[0];
-        plan = parts[1];
-    } else {
-        try {
-            const ref = JSON.parse(payment.external_reference);
-            email = ref.email;
-            plan = ref.plan;
-        } catch (e) {
-            console.log("⚠️ external_reference inválido");
-        }
-    }
-}
+                console.log("📦 external_reference encontrado:", payment.external_reference);
+                
+                if (payment.external_reference.includes('|')) {
+                    const parts = payment.external_reference.split('|');
+                    email = parts[0];
+                    plan = parts[1];
+                    console.log("✅ Extraído via pipe:", { email, plan });
+                } else {
+                    try {
+                        const ref = JSON.parse(payment.external_reference);
+                        email = ref.email;
+                        plan = ref.plan;
+                        console.log("✅ Extraído via JSON:", { email, plan });
+                    } catch (e) {
+                        console.log("⚠️ external_reference não é JSON válido:", e.message);
+                    }
+                }
+            } else {
+                console.log("⚠️ external_reference está VAZIO!");
+            }
             
+            // Tentativa 2: metadata
+            if (!email && payment.metadata) {
+                email = payment.metadata.email;
+                plan = payment.metadata.plan;
+                console.log("✅ Extraído via metadata:", { email, plan });
+            }
+            
+            // Tentativa 3: payer.email
             if (!email && payment.payer?.email) {
                 email = payment.payer.email;
+                console.log("✅ Extraído via payer.email:", email);
+            }
+            
+            // Tentativa 4: extrair plano do valor
+            if (!plan) {
+                plan = extrairPlanoDoValor(payment.transaction_amount);
+                console.log("✅ Plano extraído do valor:", plan);
             }
             
             if (!email) {
                 console.log("❌ Não foi possível extrair o email do pagamento");
+                console.log("📦 Dados disponíveis:", {
+                    external_reference: payment.external_reference,
+                    metadata: payment.metadata,
+                    payer_email: payment.payer?.email
+                });
                 return res.status(200).end();
-            }
-            
-            if (!plan) {
-                plan = extrairPlanoDoValor(payment.transaction_amount);
             }
             
             console.log("👤 Cliente:", email);
