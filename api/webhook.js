@@ -74,7 +74,7 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
     console.log(`📦 Plano: ${plan}`);
     
     // 🔧 VALIDAÇÃO DO E-MAIL
-    if (!email || !email.includes('@') || email === 'undefined' || email === 'null') {
+    if (!email || !email.includes('@') || email === 'undefined' || email === 'null' || email === '') {
         console.error("❌ E-mail inválido:", email);
         return { sucesso: false, erro: "E-mail inválido" };
     }
