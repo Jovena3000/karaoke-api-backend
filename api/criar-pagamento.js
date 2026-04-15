@@ -108,27 +108,38 @@ module.exports = async (req, res) => {
 if (metodo === 'card') {
     console.log('💳 Processando cartão transparente...');
 
-    const { token, installments = 1 } = req.body;
+    const { token, installments = 1, payment_method_id, issuer_id } = req.body;
 
-    if (!token) {
+    if (!token || !payment_method_id) {
         return res.status(400).json({
             sucesso: false,
-            erro: 'Token do cartão não enviado'
+            erro: 'Token ou método de pagamento não enviado'
         });
     }
 
     const paymentData = {
-        transaction_amount: valor,
+        transaction_amount: Number(valor),
         token: token,
         description: descricao,
-        installments: installments,
-        payment_method_id: 'visa',
+        installments: Number(installments),
+        payment_method_id: payment_method_id,
+        issuer_id: issuer_id || undefined,
         payer: {
             email: email
         },
         notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-        external_reference: JSON.stringify({ email, plan })
+
+        // 🔥 PADRÃO ÚNICO (IMPORTANTE)
+        external_reference: `${email}|${plan}`,
+
+        // 🔥 BACKUP (ANTI ERRO)
+        metadata: {
+            email,
+            plan
+        }
     };
+
+    console.log('📤 Enviando pagamento cartão:', paymentData);
 
     const response = await mercadopago.payment.create(paymentData);
     const payment = response.body;
@@ -136,11 +147,11 @@ if (metodo === 'card') {
     console.log('💳 STATUS:', payment.status);
     console.log('💳 DETALHE:', payment.status_detail);
 
-    // ✅ RETORNO ÚNICO PARA CARTÃO
     return res.status(200).json({
         sucesso: payment.status === 'approved',
         status: payment.status,
-        detalhe: payment.status_detail
+        detalhe: payment.status_detail,
+        id: payment.id
     });
 }
         // ================= MÉTODO INVÁLIDO =================
