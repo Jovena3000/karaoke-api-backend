@@ -16,7 +16,5 @@
       "destination": "https://karaokemultiplayer.com.br/$1",
       "permanent": true
     }
-  ],
-  "buildCommand": "echo 'Building...'",
-  "outputDirectory": "."
+  ]
 }
