@@ -2,7 +2,6 @@ const mercadopago = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
 const { createClient } = require('@supabase/supabase-js');
-const fetch = require("node-fetch");
 
 // ===== CONFIG =====
 mercadopago.configure({
