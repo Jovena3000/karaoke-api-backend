@@ -72,6 +72,12 @@ function configurarCORS(req, res) {
 async function processarPagamentoAprovado(email, plan, paymentId = null, merchantOrderId = null) {
     console.log(`💰 Processando pagamento para ${email}`);
     console.log(`📦 Plano: ${plan}`);
+
+    // 🔧 VALIDAÇÃO DO E-MAIL
+    if (!email || !email.includes('@') || email === 'undefined' || email === 'null') {
+        console.error("❌ E-mail inválido:", email);
+        return { sucesso: false, erro: "E-mail inválido" };
+    }
     
     // Definir dias do plano
     let diasPlano = 30;
