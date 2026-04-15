@@ -137,6 +137,12 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
     // ================= ENVIAR EMAIL =================
     try {
         console.log("📧 Enviando e-mail...");
+
+        // Verificar se email é válido
+    if (!email || !email.includes('@')) {
+        console.error("❌ Email inválido, não enviando:", email);
+        return { sucesso: true, email, plan, senha: senhaTemporaria, emailEnviado: false };
+    }
         
         const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
         
