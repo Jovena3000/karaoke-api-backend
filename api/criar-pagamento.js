@@ -108,6 +108,8 @@ module.exports = async (req, res) => {
         if (metodo === 'card') {
             console.log('💳 Processando cartão transparente...');
 
+            const { token, installments = 1 } = req.body;
+
             const { token } = req.body;
 
             if (!token) {
