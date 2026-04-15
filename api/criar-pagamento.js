@@ -105,47 +105,44 @@ module.exports = async (req, res) => {
         }
 
         // ================= CARTÃO (CHECKOUT TRANSPARENTE) =================
-        if (metodo === 'card') {
-            console.log('💳 Processando cartão transparente...');
+if (metodo === 'card') {
+    console.log('💳 Processando cartão transparente...');
 
-            const { token, installments = 1 } = req.body;
+    const { token, installments = 1 } = req.body;
 
-            const { token } = req.body;
+    if (!token) {
+        return res.status(400).json({
+            sucesso: false,
+            erro: 'Token do cartão não enviado'
+        });
+    }
 
-            if (!token) {
-                return res.status(400).json({
-                    sucesso: false,
-                    erro: 'Token do cartão não enviado'
-                });
-            }
+    const paymentData = {
+        transaction_amount: valor,
+        token: token,
+        description: descricao,
+        installments: installments,
+        payment_method_id: 'visa',
+        payer: {
+            email: email
+        },
+        notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+        external_reference: JSON.stringify({ email, plan })
+    };
 
-            const paymentData = {
-                transaction_amount: valor,
-                token: token,
-                description: descricao,
-                installments: 1,
-                payment_method_id: 'visa',
-                payer: {
-                    email: email
-                },
-                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: JSON.stringify({ email, plan })
-            };
+    const response = await mercadopago.payment.create(paymentData);
+    const payment = response.body;
 
-            const response = await mercadopago.payment.create(paymentData);
-            const payment = response.body;
+    console.log('💳 STATUS:', payment.status);
+    console.log('💳 DETALHE:', payment.status_detail);
 
-            console.log('💳 STATUS:', payment.status);
-            console.log('💳 DETALHE:', payment.status_detail);
-
-            // ✅ RETORNO ÚNICO PARA CARTÃO
-            return res.status(200).json({
-                sucesso: payment.status === 'approved',
-                status: payment.status,
-                detalhe: payment.status_detail
-            });
-        }
-
+    // ✅ RETORNO ÚNICO PARA CARTÃO
+    return res.status(200).json({
+        sucesso: payment.status === 'approved',
+        status: payment.status,
+        detalhe: payment.status_detail
+    });
+}
         // ================= MÉTODO INVÁLIDO =================
         return res.status(400).json({
             sucesso: false,
