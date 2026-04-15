@@ -130,7 +130,7 @@ if (metodo === 'card') {
         notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
 
         // 🔥 PADRÃO ÚNICO (IMPORTANTE)
-        external_reference: `${email}|${plan}`,
+        external_reference: JSON.stringify({ email, plan }),
 
         // 🔥 BACKUP (ANTI ERRO)
         metadata: {
