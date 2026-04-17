@@ -127,33 +127,48 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
     }
     
     if (usuarioExistente) {
-        console.log("🔄 Atualizando usuário existente");
-        await supabase
-            .from("usuarios")
-            .update({
-                plano: plan,
-                status: "ativo",
-                data_expiracao: dataExpiracaoStr,
-                senha_hash: senhaHash,
-                ultimo_pagamento: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            })
-            .eq("email", email);
-    } else if (emailValido) {
-        console.log("🆕 Criando novo usuário");
-        await supabase
-            .from("usuarios")
-            .insert({
-                email,
-                senha_hash: senhaHash,
-                nome: email.split('@')[0],
-                plano: plan,
-                status: "ativo",
-                data_expiracao: dataExpiracaoStr,
-                ultimo_pagamento: new Date().toISOString(),
-                created_at: new Date().toISOString()
-            });
+    console.log("🔄 Atualizando usuário existente");
+
+    const { data: updateData, error: updateError } = await supabase
+        .from("usuarios")
+        .update({
+            plano: plan,
+            status: "ativo",
+            data_expiracao: dataExpiracaoStr,
+            senha_hash: senhaHash,
+            ultimo_pagamento: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        })
+        .eq("email", email);
+
+    if (updateError) {
+        console.error("❌ ERRO AO ATUALIZAR USUÁRIO:", updateError);
     } else {
+        console.log("✅ Usuário atualizado com sucesso");
+    }
+
+} else if (emailValido) {
+    console.log("🆕 Criando novo usuário");
+
+    const { data: insertData, error: insertError } = await supabase
+        .from("usuarios")
+        .insert({
+            email,
+            senha_hash: senhaHash,
+            nome: email.split('@')[0],
+            plano: plan,
+            status: "ativo",
+            data_expiracao: dataExpiracaoStr,
+            ultimo_pagamento: new Date().toISOString(),
+            created_at: new Date().toISOString()
+        });
+
+    if (insertError) {
+        console.error("❌ ERRO AO INSERIR USUÁRIO:", insertError);
+    } else {
+        console.log("✅ Usuário criado com sucesso:", insertData);
+    }
+} else {
         console.log("⚠️ E-mail inválido, usuário NÃO foi criado no banco");
     }
     
