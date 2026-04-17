@@ -232,6 +232,7 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
                                 <p><strong>Senha temporária:</strong></p>
                                 <div class="senha">${senhaTemporaria}</div>
                                 <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
+                                <p style="color: #3498db; margin-top: 18px;">⚠️ Clique em *Esqueci minha senha* na página de login</p>
                             </div>
                             <div style="text-align: center;">
                                 <a href="https://karaokemultiplayer.com.br/login.html" class="button">🎤 ACESSAR KARAOKÊ</a>
