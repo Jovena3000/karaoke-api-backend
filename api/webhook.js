@@ -168,8 +168,8 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
             data_expiracao: dataExpiracaoStr,
             ultimo_pagamento: new Date().toISOString(),
             created_at: new Date().toISOString()
-        });
-          .select();
+        })
+    .select();
         
     if (insertError) {
         console.error("❌ ERRO AO INSERIR USUÁRIO:", insertError);
