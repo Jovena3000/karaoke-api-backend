@@ -125,6 +125,11 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
             .maybeSingle();
         usuarioExistente = data;
     }
+    console.log("📥 Tentando salvar usuário:", {
+    email,
+    plan,
+    dataExpiracaoStr
+});
     
     if (usuarioExistente) {
     console.log("🔄 Atualizando usuário existente");
@@ -142,10 +147,12 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
         .eq("email", email);
 
     if (updateError) {
-        console.error("❌ ERRO AO ATUALIZAR USUÁRIO:", updateError);
-    } else {
-        console.log("✅ Usuário atualizado com sucesso");
-    }
+    console.error("❌ ERRO AO ATUALIZAR USUÁRIO:", updateError);
+} else if (!updateData || updateData.length === 0) {
+    console.warn("⚠️ Nenhum usuário foi atualizado (email não encontrado?)");
+} else {
+    console.log("✅ Usuário atualizado com sucesso");
+}
 
 } else if (emailValido) {
     console.log("🆕 Criando novo usuário");
@@ -162,7 +169,8 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
             ultimo_pagamento: new Date().toISOString(),
             created_at: new Date().toISOString()
         });
-
+          .select();
+        
     if (insertError) {
         console.error("❌ ERRO AO INSERIR USUÁRIO:", insertError);
     } else {
