@@ -1,6 +1,10 @@
 // api/criar-pagamento.js - VERSÃO COMPLETA CORRIGIDA
 const mercadopago = require('mercadopago');
 
+// 🔥 COLOQUE SUA ACCESS TOKEN REAL AQUI (TEMPORÁRIO PARA TESTE)
+const MP_ACCESS_TOKEN = 'APP_USR-4680c685-8a93-4f07-8d1d-d35e1e27b6b2';
+//                         ↑↑↑↑ SUBSTITUA PELA SUA TOKEN REAL ↑↑↑↑
+
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
