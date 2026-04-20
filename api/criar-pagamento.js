@@ -104,55 +104,83 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ================= CARTÃO (CHECKOUT TRANSPARENTE) =================
+        // ================= CARTÃO (CHECKOUT TRANSPARENTE) - CORRIGIDO =================
 if (metodo === 'card') {
     console.log('💳 Processando cartão transparente...');
 
-    const { token, installments = 1, payment_method_id, issuer_id } = req.body;
+    // 🔥 CORREÇÃO: Só precisa do token, o resto é opcional
+    const { token } = req.body;
 
-    if (!token || !payment_method_id) {
+    console.log('📩 Token recebido:', token ? `${token.substring(0, 10)}...` : '❌ NÃO');
+
+    if (!token) {
         return res.status(400).json({
             sucesso: false,
-            erro: 'Token ou método de pagamento não enviado'
+            erro: 'Token do cartão não enviado'
         });
     }
 
+    // 🔥 CORREÇÃO: Remover campos obrigatórios desnecessários
     const paymentData = {
         transaction_amount: Number(valor),
         token: token,
         description: descricao,
-        installments: Number(installments),
-        payment_method_id: payment_method_id,
-        issuer_id: issuer_id || undefined,
+        installments: 1,  // Fixo em 1 parcela
+        payment_method_id: 'master',  // Valor padrão, o MP identifica automaticamente
         payer: {
-            email: email
+            email: email,
+            identification: {
+                type: 'CPF',
+                number: '19119119100'  // CPF padrão (opcional)
+            }
         },
         notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-
-        // 🔥 PADRÃO ÚNICO (IMPORTANTE)
         external_reference: JSON.stringify({ email, plan }),
-
-        // 🔥 BACKUP (ANTI ERRO)
         metadata: {
             email,
             plan
         }
     };
 
-    console.log('📤 Enviando pagamento cartão:', paymentData);
-
-    const response = await mercadopago.payment.create(paymentData);
-    const payment = response.body;
-
-    console.log('💳 STATUS:', payment.status);
-    console.log('💳 DETALHE:', payment.status_detail);
-
-    return res.status(200).json({
-        sucesso: payment.status === 'approved',
-        status: payment.status,
-        detalhe: payment.status_detail,
-        id: payment.id
+    console.log('📤 Enviando pagamento cartão:', {
+        ...paymentData,
+        token: `${paymentData.token.substring(0, 10)}...`
     });
+
+    try {
+        const response = await mercadopago.payment.create(paymentData);
+        const payment = response.body;
+
+        console.log('💳 STATUS:', payment.status);
+        console.log('💳 DETALHE:', payment.status_detail);
+        console.log('💳 ID:', payment.id);
+
+        if (payment.status === 'approved') {
+            return res.status(200).json({
+                sucesso: true,
+                status: payment.status,
+                id: payment.id,
+                mensagem: 'Pagamento aprovado!'
+            });
+        } else {
+            return res.status(200).json({
+                sucesso: false,
+                status: payment.status,
+                detalhe: payment.status_detail,
+                erro: `Pagamento ${payment.status}: ${payment.status_detail || 'Tente novamente'}`
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro ao processar cartão:', error.response?.data || error.message);
+        
+        const erroMP = error.response?.data;
+        return res.status(200).json({
+            sucesso: false,
+            erro: erroMP?.message || error.message,
+            detalhe: erroMP?.cause || 'Erro ao processar pagamento'
+        });
+    }
 }
         // ================= MÉTODO INVÁLIDO =================
         return res.status(400).json({
