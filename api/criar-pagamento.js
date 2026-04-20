@@ -1,76 +1,44 @@
-// api/criar-pagamento.js
+// api/criar-pagamento.js - VERSÃO COMPLETA CORRIGIDA
 const mercadopago = require('mercadopago');
 
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
 
-// ===== CORS =====
-function configurarCORS(req, res) {
-    const allowedOrigins = [
-        'https://karaokemultiplayer.com.br',
-        'https://www.karaokemultiplayer.com.br',
-        'http://localhost:3000'
-    ];
-
-    const origin = req.headers.origin;
-
-    if (allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-        res.setHeader('Access-Control-Allow-Origin', 'https://karaokemultiplayer.com.br');
-    }
-
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-    if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return true;
-    }
-
-    return false;
-}
-
 module.exports = async (req, res) => {
-    console.log("🚀 CREATE PAYMENT");
+    // 🔥 CORS SIMPLIFICADO (funciona para todos)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    // Resposta imediata para OPTIONS (preflight)
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
 
-    if (configurarCORS(req, res)) return;
+    console.log("🚀 CREATE PAYMENT");
+    console.log("📩 Método:", req.method);
+    console.log("📩 Body:", req.body);
 
     if (req.method !== 'POST') {
         return res.status(405).json({ erro: 'Método não permitido' });
     }
 
     try {
-        const { plan, email, metodo } = req.body;
+        const { plan, email, metodo, token } = req.body;
 
-        console.log('📩 Dados recebidos:', { email, plan, metodo });
+        console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌' });
 
-        // ===== PLANOS =====
-        let valor = 0;
-        let descricao = '';
+        // Preços dos planos
+        const precos = {
+            mensal: 5.00,
+            trimestral: 49.90,
+            semestral: 89.90,
+            anual: 159.90
+        };
 
-        switch (plan) {
-            case 'mensal':
-                valor = 5.00;
-                descricao = 'Plano Mensal - Karaokê Multiplayer';
-                break;
-            case 'trimestral':
-                valor = 49.90;
-                descricao = 'Plano Trimestral - Karaokê Multiplayer';
-                break;
-            case 'semestral':
-                valor = 89.90;
-                descricao = 'Plano Semestral - Karaokê Multiplayer';
-                break;
-            case 'anual':
-                valor = 159.90;
-                descricao = 'Plano Anual - Karaokê Multiplayer';
-                break;
-            default:
-                throw new Error("Plano inválido");
-        }
+        const valor = precos[plan] || 49.90;
+        const descricao = `Plano ${plan} - Karaokê Multiplayer`;
 
         // ================= PIX =================
         if (metodo === 'pix') {
@@ -80,17 +48,10 @@ module.exports = async (req, res) => {
                 transaction_amount: valor,
                 description: descricao,
                 payment_method_id: 'pix',
-                payer: {
-                    email: email,
-                    first_name: email.split('@')[0],
-                    last_name: 'User'
-                },
+                payer: { email: email },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
                 external_reference: `${email}|${plan}`,
-                metadata: {
-                    email,
-                    plan
-                }
+                metadata: { email, plan }
             });
 
             const data = payment.body;
@@ -104,74 +65,44 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ================= CARTÃO (CHECKOUT TRANSPARENTE) - CORRIGIDO =================
-if (metodo === 'card') {
-    console.log('💳 Processando cartão transparente...');
+        // ================= CARTÃO =================
+        if (metodo === 'card') {
+            console.log('💳 Processando cartão...');
 
-    // 🔥 CORREÇÃO: Só precisa do token, o resto é opcional
-    const { token } = req.body;
-
-    console.log('📩 Token recebido:', token ? `${token.substring(0, 10)}...` : '❌ NÃO');
-
-    if (!token) {
-        return res.status(400).json({
-            sucesso: false,
-            erro: 'Token do cartão não enviado'
-        });
-    }
-
-    // 🔥 CORREÇÃO: Remover campos obrigatórios desnecessários
-    const paymentData = {
-        transaction_amount: Number(valor),
-        token: token,
-        description: descricao,
-        installments: 1,  // Fixo em 1 parcela
-        payment_method_id: 'master',  // Valor padrão, o MP identifica automaticamente
-        payer: {
-            email: email,
-            identification: {
-                type: 'CPF',
-                number: '19119119100'  // CPF padrão (opcional)
+            if (!token) {
+                return res.status(400).json({
+                    sucesso: false,
+                    erro: 'Token do cartão não enviado'
+                });
             }
-        },
-        notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-        external_reference: JSON.stringify({ email, plan }),
-        metadata: {
-            email,
-            plan
-        }
-    };
 
-    console.log('📤 Enviando pagamento cartão:', {
-        ...paymentData,
-        token: `${paymentData.token.substring(0, 10)}...`
-    });
+            const paymentData = {
+                transaction_amount: Number(valor),
+                token: token,
+                description: descricao,
+                installments: 1,
+                payment_method_id: 'master',
+                payer: { email: email },
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+                external_reference: JSON.stringify({ email, plan }),
+                metadata: { email, plan }
+            };
 
-    try {
-        const response = await mercadopago.payment.create(paymentData);
-        const payment = response.body;
+            console.log('📤 Enviando para MP...');
 
-        console.log('💳 STATUS:', payment.status);
-        console.log('💳 DETALHE:', payment.status_detail);
-        console.log('💳 ID:', payment.id);
+            const response = await mercadopago.payment.create(paymentData);
+            const payment = response.body;
 
-        if (payment.status === 'approved') {
+            console.log('💳 Status:', payment.status);
+
             return res.status(200).json({
-                sucesso: true,
+                sucesso: payment.status === 'approved',
                 status: payment.status,
                 id: payment.id,
-                mensagem: 'Pagamento aprovado!'
-            });
-        } else {
-            return res.status(200).json({
-                sucesso: false,
-                status: payment.status,
-                detalhe: payment.status_detail,
-                erro: `Pagamento ${payment.status}: ${payment.status_detail || 'Tente novamente'}`
+                mensagem: payment.status === 'approved' ? 'Pagamento aprovado!' : 'Pagamento pendente'
             });
         }
-        
-            // ================= MÉTODO INVÁLIDO =================
+
         return res.status(400).json({
             sucesso: false,
             erro: 'Método de pagamento inválido'
