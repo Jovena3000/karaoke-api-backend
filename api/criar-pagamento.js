@@ -2,7 +2,7 @@
 const mercadopago = require('mercadopago');
 
 // 🔥 COLOQUE SUA ACCESS TOKEN REAL AQUI (TEMPORÁRIO PARA TESTE)
-const MP_ACCESS_TOKEN = 'APP_USR-4680c685-8a93-4f07-8d1d-d35e1e27b6b2';
+const MP_ACCESS_TOKEN = 'APP_USR-2385096665734797-021814-9a11c38f6752e996371ba1955701fee7-9710270';
 //                         ↑↑↑↑ SUBSTITUA PELA SUA TOKEN REAL ↑↑↑↑
 
 mercadopago.configure({
