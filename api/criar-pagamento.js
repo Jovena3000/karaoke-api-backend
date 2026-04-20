@@ -171,18 +171,7 @@ if (metodo === 'card') {
             });
         }
         
-    } catch (error) {
-        console.error('❌ Erro ao processar cartão:', error.response?.data || error.message);
-        
-        const erroMP = error.response?.data;
-        return res.status(200).json({
-            sucesso: false,
-            erro: erroMP?.message || error.message,
-            detalhe: erroMP?.cause || 'Erro ao processar pagamento'
-        });
-    }
-}
-        // ================= MÉTODO INVÁLIDO =================
+            // ================= MÉTODO INVÁLIDO =================
         return res.status(400).json({
             sucesso: false,
             erro: 'Método de pagamento inválido'
