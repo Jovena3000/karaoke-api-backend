@@ -1,3 +1,4 @@
+// webhook.js
 const mercadopago = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
@@ -86,7 +87,7 @@ function isValidEmail(email) {
     return true;
 }
 
-// ================= FUNÇÃO AUXILIAR PARA PROCESSAR PAGAMENTO =================
+// ================= FUNÇÃO PARA PROCESSAR PAGAMENTO APROVADO =================
 async function processarPagamentoAprovado(email, plan, paymentId = null, merchantOrderId = null) {
     console.log(`💰 Processando pagamento para ${email}`);
     console.log(`📦 Plano: ${plan}`);
@@ -125,58 +126,51 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
             .maybeSingle();
         usuarioExistente = data;
     }
-    console.log("📥 Tentando salvar usuário:", {
-    email,
-    plan,
-    dataExpiracaoStr
-});
+    
+    console.log("📥 Tentando salvar usuário:", { email, plan, dataExpiracaoStr });
     
     if (usuarioExistente) {
-    console.log("🔄 Atualizando usuário existente");
+        console.log("🔄 Atualizando usuário existente");
 
-    const { data: updateData, error: updateError } = await supabase
-        .from("usuarios")
-        .update({
-            plano: plan,
-            status: "ativo",
-            data_expiracao: dataExpiracaoStr,
-            senha_hash: senhaHash,
-            ultimo_pagamento: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-        })
-        .eq("email", email);
+        const { error: updateError } = await supabase
+            .from("usuarios")
+            .update({
+                plano: plan,
+                status: "ativo",
+                data_expiracao: dataExpiracaoStr,
+                senha_hash: senhaHash,
+                ultimo_pagamento: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .eq("email", email);
 
-    if (updateError) {
-    console.error("❌ ERRO AO ATUALIZAR USUÁRIO:", updateError);
-} else if (!updateData || updateData.length === 0) {
-    console.warn("⚠️ Nenhum usuário foi atualizado (email não encontrado?)");
-} else {
-    console.log("✅ Usuário atualizado com sucesso");
-}
+        if (updateError) {
+            console.error("❌ ERRO AO ATUALIZAR USUÁRIO:", updateError);
+        } else {
+            console.log("✅ Usuário atualizado com sucesso");
+        }
+    } else if (emailValido) {
+        console.log("🆕 Criando novo usuário");
 
-} else if (emailValido) {
-    console.log("🆕 Criando novo usuário");
-
-    const { data: insertData, error: insertError } = await supabase
-        .from("usuarios")
-        .insert({
-            email,
-            senha_hash: senhaHash,
-            nome: email.split('@')[0],
-            plano: plan,
-            status: "ativo",
-            data_expiracao: dataExpiracaoStr,
-            ultimo_pagamento: new Date().toISOString(),
-            created_at: new Date().toISOString()
-        })
-    .select();
+        const { error: insertError } = await supabase
+            .from("usuarios")
+            .insert({
+                email,
+                senha_hash: senhaHash,
+                nome: email.split('@')[0],
+                plano: plan,
+                status: "ativo",
+                data_expiracao: dataExpiracaoStr,
+                ultimo_pagamento: new Date().toISOString(),
+                created_at: new Date().toISOString()
+            });
         
-    if (insertError) {
-        console.error("❌ ERRO AO INSERIR USUÁRIO:", insertError);
+        if (insertError) {
+            console.error("❌ ERRO AO INSERIR USUÁRIO:", insertError);
+        } else {
+            console.log("✅ Usuário criado com sucesso");
+        }
     } else {
-        console.log("✅ Usuário criado com sucesso:", insertData);
-    }
-} else {
         console.log("⚠️ E-mail inválido, usuário NÃO foi criado no banco");
     }
     
@@ -194,7 +188,7 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
             const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
             const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
             
-            const emailResult = await resend.emails.send({
+            await resend.emails.send({
                 from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
                 to: email,
                 subject: "✅ Pagamento Confirmado - Acesso Liberado!",
@@ -232,7 +226,6 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
                                 <p><strong>Senha temporária:</strong></p>
                                 <div class="senha">${senhaTemporaria}</div>
                                 <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
-                                <p style="color: #3498db; margin-top: 18px;">⚠️ Clique em *Esqueci minha senha* na página de login</p>
                             </div>
                             <div style="text-align: center;">
                                 <a href="https://karaokemultiplayer.com.br/login.html" class="button">🎤 ACESSAR KARAOKÊ</a>
@@ -261,7 +254,7 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
 }
 
 // ================= WEBHOOK PRINCIPAL =================
-module.exports = async (req, res) => {
+const webhookHandler = async (req, res) => {
     console.log("🚀 WEBHOOK FINAL ATIVO");
     console.log("📝 Method:", req.method);
 
@@ -405,7 +398,6 @@ module.exports = async (req, res) => {
                     metadata: payment.metadata,
                     payer_email: payment.payer?.email
                 });
-                // Continua mesmo sem email? Não, pois precisa do email para salvar
                 return res.status(200).end();
             }
             
@@ -437,8 +429,7 @@ module.exports = async (req, res) => {
         return res.status(200).end();
     }
 };
-// webhook.js - No final do arquivo
-module.exports = webhookHandler;
 
-// 🔥 Exportar também a função de processamento para ser usada diretamente
+// ================= EXPORTAÇÕES =================
+module.exports = webhookHandler;
 module.exports.processarPagamentoAprovado = processarPagamentoAprovado;
