@@ -17,37 +17,17 @@ const supabase = createClient(
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ===== CORS =====
-function configurarCORS(req, res) {
-    const allowedOrigins = [
-        'https://karaokemultiplayer.com.br',
-        'https://www.karaokemultiplayer.com.br',
-        'https://karaoke-multiplayer.pages.dev',
-        'http://localhost:3000',
-        'http://localhost:5173'
-    ];
+module.exports = async (req, res) => {
+    if (req.method !== 'POST') {
+        return res.status(405).end();
+    }
+
+    console.log('📩 Webhook recebido:', req.body);
+
+    // resto da lógica...
     
-    const origin = req.headers.origin;
-
-    if (allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-    }
-
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-    // 🔥 ESSENCIAL PRA NÃO QUEBRAR NO VERCEL
-    res.setHeader('Vary', 'Origin');
-
-    if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return true;
-    }
-
-    return false;
-}
+    res.status(200).send('OK');
+};
 // ===== FUNÇÃO AUXILIAR PARA CRIAR TABELA DE LOG =====
 async function ensureTableExists() {
     const { error } = await supabase
