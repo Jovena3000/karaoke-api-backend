@@ -437,3 +437,8 @@ module.exports = async (req, res) => {
         return res.status(200).end();
     }
 };
+// webhook.js - No final do arquivo
+module.exports = webhookHandler;
+
+// 🔥 Exportar também a função de processamento para ser usada diretamente
+module.exports.processarPagamentoAprovado = processarPagamentoAprovado;
