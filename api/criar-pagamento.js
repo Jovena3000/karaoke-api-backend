@@ -1,12 +1,22 @@
-// api/criar-pagamento.js - VERSÃO COMPLETA CORRIGIDA
+// api/criar-pagamento.js - PRIMEIRAS LINHAS
 const mercadopago = require('mercadopago');
 
-console.log("🔥 TOKEN REAL:", process.env.MP_ACCESS_TOKEN);
+// 🔥 DIAGNÓSTICO - Descobrir qual token está sendo usada
+console.log('========== DIAGNÓSTICO MP ==========');
+console.log('Token do ambiente:', process.env.MP_ACCESS_TOKEN ? '✅ EXISTE' : '❌ NÃO EXISTE');
+if (process.env.MP_ACCESS_TOKEN) {
+    console.log('Primeiros 10 caracteres:', process.env.MP_ACCESS_TOKEN.substring(0, 10));
+    console.log('Tamanho:', process.env.MP_ACCESS_TOKEN.length);
+    console.log('Começa com APP_USR?', process.env.MP_ACCESS_TOKEN.startsWith('APP_USR'));
+} else {
+    console.log('⚠️ Usando token FALLBACK?', !!MP_FALLBACK);
+}
+console.log('====================================');
 
+// Configure com a token (se não tiver, vai dar erro)
 mercadopago.configure({
-    access_token: process.env.MP_ACCESS_TOKEN
+    access_token: process.env.MP_ACCESS_TOKEN  // ← TEM QUE EXISTIR!
 });
-
 module.exports = async (req, res) => {
     // 🔥 CORS SIMPLIFICADO (funciona para todos)
     res.setHeader('Access-Control-Allow-Origin', '*');
