@@ -1,4 +1,4 @@
-// webhook.js - VERSÃO CORRIGIDA
+// webhook.js - VERSÃO SIMPLIFICADA E CORRETA
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
@@ -17,21 +17,7 @@ const supabase = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// ================= FUNÇÃO AUXILIAR =================
-async function ensureTableExists() {
-    const { error } = await supabase
-        .from('pagamentos_processados')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-
-    if (error && error.message.includes('does not exist')) {
-        console.log('⚠️ Tabela pagamentos_processados não existe.');
-    }
-    return true;
-}
-
-// ================= PLANO =================
+// ================= FUNÇÕES AUXILIARES =================
 function extrairPlanoDoValor(valor) {
     if (valor == 5.00 || valor == 5) return "mensal";
     if (valor == 49.90 || valor == 49.9) return "trimestral";
@@ -40,7 +26,6 @@ function extrairPlanoDoValor(valor) {
     return "mensal";
 }
 
-// ================= VALIDAÇÃO =================
 function isValidEmail(email) {
     return email && typeof email === 'string' && email.includes('@');
 }
@@ -95,16 +80,8 @@ async function processarPagamentoAprovado(email, plan) {
         await resend.emails.send({
             from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
             to: email,
-            subject: "✅ Pagamento Confirmado - Karaokê Multiplayer",
-            html: `
-                <h1>🎤 Pagamento Confirmado!</h1>
-                <p>Olá, seu pagamento foi aprovado!</p>
-                <p><strong>Plano:</strong> ${plan}</p>
-                <p><strong>Valor:</strong> R$ ${valor.toFixed(2).replace('.', ',')}</p>
-                <p><strong>Sua senha de acesso:</strong> <code style="background:#f0f0f0;padding:5px;">${senha}</code></p>
-                <p><strong>Expira em:</strong> ${exp.toLocaleDateString('pt-BR')}</p>
-                <a href="https://karaokemultiplayer.com.br/login.html">Clique aqui para acessar</a>
-            `
+            subject: "✅ Pagamento Confirmado!",
+            html: `<h1>Pagamento aprovado!</h1><p>Sua senha: <strong>${senha}</strong></p><p>Plano: ${plan}</p><p>Expira em: ${exp.toLocaleDateString('pt-BR')}</p>`
         });
         console.log("✅ Email enviado!");
     } catch (e) {
@@ -113,28 +90,18 @@ async function processarPagamentoAprovado(email, plan) {
 }
 
 // ================= WEBHOOK PRINCIPAL =================
-const webhookHandler = async (req, res) => {
-    console.log("🚀 WEBHOOK ATIVO");
-
-    // ===== CORS =====
+module.exports = async (req, res) => {
+    // CORS
     const origin = req.headers.origin;
-    const allowedOrigins = [
-        'https://karaokemultiplayer.com.br',
-        'https://www.karaokemultiplayer.com.br',
-        'https://karaoke-multiplayer.pages.dev'
-    ];
-
-    if (origin && allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-    }
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+    
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
+
+    console.log("🚀 WEBHOOK ATIVO");
 
     if (req.method !== 'POST') {
         return res.status(200).end();
@@ -145,32 +112,16 @@ const webhookHandler = async (req, res) => {
         const paymentId = data?.id;
 
         if (!paymentId || type !== 'payment') {
-            console.log("⛔ Evento ignorado");
             return res.status(200).end();
         }
 
         console.log("🔎 Buscando pagamento:", paymentId);
 
-        await ensureTableExists();
-
-        const { data: existente } = await supabase
-            .from('pagamentos_processados')
-            .select('id')
-            .eq('id', String(paymentId))
-            .maybeSingle();
-
-        if (existente) {
-            console.log("⚠️ Já processado");
-            return res.status(200).end();
-        }
-
-        // 🔥 SDK NOVO CORRETO
+        // Buscar pagamento
         const payment = await paymentClient.get({ id: paymentId });
-
         console.log("💳 Status:", payment.status);
 
         if (payment.status !== 'approved') {
-            console.log("⏳ Pagamento não aprovado");
             return res.status(200).end();
         }
 
@@ -192,18 +143,11 @@ const webhookHandler = async (req, res) => {
             return res.status(200).end();
         }
 
-        console.log(`👤 Cliente: ${email}`);
-        console.log(`📦 Plano: ${plan}`);
+        console.log(`👤 Cliente: ${email}, 📦 Plano: ${plan}`);
 
         await processarPagamentoAprovado(email, plan);
 
-        await supabase.from('pagamentos_processados').insert({
-            id: String(paymentId),
-            email,
-            processado_em: new Date().toISOString()
-        });
-
-        console.log("✅ FINALIZADO COM SUCESSO!");
+        console.log("✅ FINALIZADO!");
         return res.status(200).json({ ok: true });
 
     } catch (err) {
@@ -212,6 +156,5 @@ const webhookHandler = async (req, res) => {
     }
 };
 
-// ================= EXPORTAÇÕES =================
-module.exports = webhookHandler;
+// Exportar função auxiliar
 module.exports.processarPagamentoAprovado = processarPagamentoAprovado;
