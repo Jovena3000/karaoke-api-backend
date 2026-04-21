@@ -7,13 +7,13 @@ mercadopago.configure({
 });
 
 module.exports = async (req, res) => {
-    // 🔥 CORS SIMPLIFICADO - PERMITE TODAS AS ORIGENS (para teste)
+    // 🔥 CORS - PERMITE TODAS AS ORIGENS (SOLUÇÃO DEFINITIVA)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Max-Age', '86400'); // Cache do preflight por 24h
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Max-Age', '86400');
     
-    // Resposta imediata para OPTIONS (preflight)
+    // Resposta imediata para preflight (OPTIONS)
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -24,7 +24,6 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') {
         return res.status(405).json({ erro: 'Método não permitido' });
     }
-
     try {
         const { plan, email, metodo, token } = req.body;
 
