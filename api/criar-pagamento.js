@@ -8,21 +8,36 @@ const client = new MercadoPagoConfig({
 
 module.exports = async (req, res) => {
   // ✅ CORS CORRIGIDO (anti-bug Vercel)
-  const origin = req.headers.origin;
+  // 🔥 CORS CORRIGIDO (anti-bug Vercel)
+const origin = req.headers.origin;
 
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
+// Lista de domínios permitidos (opcional)
+const allowedOrigins = [
+    'https://karaokemultiplayer.com.br',
+    'https://www.karaokemultiplayer.com.br',
+    'https://karaoke-multiplayer.pages.dev'
+];
 
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Vary', 'Origin');
+if (origin) {
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        // Para desenvolvimento local
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+} else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+}
 
-  if (req.method === 'OPTIONS') {
+res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+res.setHeader('Access-Control-Allow-Credentials', 'true');
+res.setHeader('Access-Control-Max-Age', '86400');
+
+// Resposta para preflight
+if (req.method === 'OPTIONS') {
     return res.status(200).end();
-  }
-
+}
   if (req.method !== 'POST') {
     return res.status(405).json({ erro: 'Método não permitido' });
   }
