@@ -1,12 +1,6 @@
 // api/criar-pagamento.js - VERSÃO COMPLETA CORRIGIDA
 const mercadopago = require('mercadopago');
 
-// 🔥 Tenta pegar do ambiente, se não tiver, usa um valor de fallback
-const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN || 'APP_USR-2385096665734797-021814-9a11c38f6752e996371ba1955701fee7-9710270';
-
-console.log('🔑 Token configurada?', MP_ACCESS_TOKEN ? '✅ Sim' : '❌ Não');
-console.log('🔑 Primeiros caracteres:', MP_ACCESS_TOKEN?.substring(0, 15) + '...');
-
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
