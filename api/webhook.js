@@ -27,23 +27,27 @@ function configurarCORS(req, res) {
     ];
     
     const origin = req.headers.origin;
+
     if (allowedOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
     } else {
         res.setHeader('Access-Control-Allow-Origin', '*');
     }
-    
+
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    
+
+    // 🔥 ESSENCIAL PRA NÃO QUEBRAR NO VERCEL
+    res.setHeader('Vary', 'Origin');
+
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return true;
     }
+
     return false;
 }
-
 // ===== FUNÇÃO AUXILIAR PARA CRIAR TABELA DE LOG =====
 async function ensureTableExists() {
     const { error } = await supabase
