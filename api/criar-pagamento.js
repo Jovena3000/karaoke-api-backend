@@ -1,18 +1,17 @@
-// api/criar-pagamento.js - VERSÃO COMPLETA CORRIGIDA
+// api/criar-pagamento.js - VERSÃO FINAL SEGURA
 const mercadopago = require('mercadopago');
 
-console.log("🔥 TOKEN REAL:", process.env.MP_ACCESS_TOKEN);
-
+// 🔥 REMOVI a linha que mostrava a token!
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
+
 module.exports = async (req, res) => {
-    // 🔥 CORS SIMPLIFICADO (funciona para todos)
+    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     
-    // Resposta imediata para OPTIONS (preflight)
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -30,7 +29,6 @@ module.exports = async (req, res) => {
 
         console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌' });
 
-        // Preços dos planos
         const precos = {
             mensal: 5.00,
             trimestral: 49.90,
@@ -41,7 +39,7 @@ module.exports = async (req, res) => {
         const valor = precos[plan] || 49.90;
         const descricao = `Plano ${plan} - Karaokê Multiplayer`;
 
-        // ================= PIX =================
+        // PIX
         if (metodo === 'pix') {
             console.log('💳 Criando PIX...');
 
@@ -66,7 +64,7 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ================= CARTÃO =================
+        // CARTÃO
         if (metodo === 'card') {
             console.log('💳 Processando cartão...');
 
@@ -82,7 +80,7 @@ module.exports = async (req, res) => {
                 token: token,
                 description: descricao,
                 installments: 1,
-                payment_method_id: payment_method_id,
+                payment_method_id: payment_method_id || 'master',  // Fallback seguro
                 payer: { email: email },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
                 external_reference: `${email}|${plan}`,
