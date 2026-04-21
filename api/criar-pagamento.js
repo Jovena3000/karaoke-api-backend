@@ -84,7 +84,7 @@ module.exports = async (req, res) => {
                 payment_method_id: 'master',
                 payer: { email: email },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: JSON.stringify({ email, plan }),
+                external_reference: `${email}|${plan}`,
                 metadata: { email, plan }
             };
 
