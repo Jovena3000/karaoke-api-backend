@@ -1,4 +1,4 @@
-// api/criar-pagamento.js - VERSÃO CORRETA
+// api/criar-pagamento.js - INÍCIO DO ARQUIVO
 const mercadopago = require('mercadopago');
 const { processarPagamentoAprovado } = require('./webhook');
 
@@ -7,15 +7,19 @@ mercadopago.configure({
 });
 
 module.exports = async (req, res) => {
+    // 🔥 CORS SIMPLIFICADO - PERMITE TODAS AS ORIGENS (para teste)
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Max-Age', '86400'); // Cache do preflight por 24h
     
+    // Resposta imediata para OPTIONS (preflight)
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
 
     console.log("🚀 CREATE PAYMENT");
+    console.log("📩 Body:", req.body);
 
     if (req.method !== 'POST') {
         return res.status(405).json({ erro: 'Método não permitido' });
