@@ -1,4 +1,4 @@
-// api/criar-pagamento.js - VERSÃO FINAL CORRIGIDA
+// api/criar-pagamento.js - VERSÃO CORRETA (CHECKOUT TRANSPARENTE)
 const mercadopago = require('mercadopago');
 const { processarPagamentoAprovado } = require('./webhook');
 
@@ -10,15 +10,14 @@ mercadopago.configure({
 module.exports = async (req, res) => {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
 
     console.log("🚀 CREATE PAYMENT");
-    console.log("📩 Método:", req.method);
     console.log("📩 Body:", req.body);
 
     if (req.method !== 'POST') {
@@ -26,19 +25,10 @@ module.exports = async (req, res) => {
     }
 
     try {
-        const { plan, email, metodo, token, payment_method_id } = req.body;
+        const { plan, email, metodo, token } = req.body;
 
-        console.log('📩 Dados recebidos:', { email, plan, metodo, token: token ? '✅' : '❌' });
+        console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌' });
 
-        // Validação básica
-        if (!email || !plan || !metodo) {
-            return res.status(400).json({
-                sucesso: false,
-                erro: 'Dados incompletos: email, plan e metodo são obrigatórios'
-            });
-        }
-
-        // Preços dos planos
         const precos = {
             mensal: 5.00,
             trimestral: 49.90,
@@ -51,8 +41,7 @@ module.exports = async (req, res) => {
 
         // ================= PIX =================
         if (metodo === 'pix') {
-            console.log('📱 Criando PIX para:', email);
-            console.log('💰 Valor:', valor);
+            console.log('📱 Criando PIX...');
 
             const payment = await mercadopago.payment.create({
                 transaction_amount: valor,
@@ -66,8 +55,6 @@ module.exports = async (req, res) => {
 
             const data = payment.body;
 
-            console.log('✅ PIX criado com sucesso. ID:', data.id);
-
             return res.status(200).json({
                 sucesso: true,
                 metodo: 'pix',
@@ -77,10 +64,9 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ================= CARTÃO =================
+        // ================= CARTÃO (CORRETO - NÃO É PREFERÊNCIA!) =================
         if (metodo === 'card') {
-            console.log('💳 Processando cartão para:', email);
-            console.log('💰 Valor:', valor);
+            console.log('💳 Processando cartão...');
 
             if (!token) {
                 return res.status(400).json({
@@ -89,12 +75,13 @@ module.exports = async (req, res) => {
                 });
             }
 
+            // 🔥 ISSO É O CORRETO - NÃO É PREFERÊNCIA!
             const paymentData = {
                 transaction_amount: Number(valor),
                 token: token,
                 description: descricao,
                 installments: 1,
-                payment_method_id: payment_method_id || 'master',
+                payment_method_id: 'master',
                 payer: { 
                     email: email,
                     identification: {
@@ -107,27 +94,18 @@ module.exports = async (req, res) => {
                 metadata: { email, plan }
             };
 
-            console.log('📤 Enviando para o Mercado Pago...');
+            console.log('📤 Enviando pagamento para MP...');
 
             const response = await mercadopago.payment.create(paymentData);
             const payment = response.body;
 
-            console.log('💳 Status do pagamento:', payment.status);
-            console.log('💳 ID do pagamento:', payment.id);
+            console.log('💳 Status:', payment.status);
+            console.log('💳 ID:', payment.id);
 
-            // 🔥 SE O PAGAMENTO JÁ FOI APROVADO, PROCESSAR IMEDIATAMENTE
+            // Se já foi aprovado, processa imediatamente
             if (payment.status === 'approved') {
                 console.log('✅ Pagamento aprovado! Processando...');
-                
-                try {
-                    // Chamar diretamente a função de processamento do webhook
-                    await processarPagamentoAprovado(email, plan, payment.id);
-                    console.log('✅ Usuário ativado e e-mail enviado com sucesso!');
-                } catch (processError) {
-                    console.error('❌ Erro ao processar pagamento aprovado:', processError);
-                    // Não falhar a requisição mesmo se o processamento falhar
-                    // O webhook vai tentar novamente depois
-                }
+                await processarPagamentoAprovado(email, plan, payment.id);
             }
 
             return res.status(200).json({
@@ -135,38 +113,26 @@ module.exports = async (req, res) => {
                 status: payment.status,
                 id: payment.id,
                 mensagem: payment.status === 'approved' 
-                    ? 'Pagamento aprovado! Você receberá um e-mail em instantes.' 
-                    : 'Pagamento pendente. Aguarde a confirmação.'
+                    ? 'Pagamento aprovado!' 
+                    : 'Pagamento pendente'
             });
         }
 
-        // ================= MÉTODO INVÁLIDO =================
         return res.status(400).json({
             sucesso: false,
-            erro: 'Método de pagamento inválido. Use "pix" ou "card"'
+            erro: 'Método de pagamento inválido'
         });
 
     } catch (error) {
-        console.error('❌ ERRO no criar-pagamento:', error.message);
+        console.error('❌ ERRO:', error.message);
         
-        // Log detalhado do erro do Mercado Pago
         if (error.response?.data) {
-            console.error('📦 Detalhes do erro MP:', JSON.stringify(error.response.data, null, 2));
-        }
-        
-        // Mensagem amigável para o usuário
-        let mensagemErro = 'Erro interno do servidor. Tente novamente.';
-        
-        if (error.message.includes('invalid') || error.message.includes('credentials')) {
-            mensagemErro = 'Erro de autenticação. Tente novamente mais tarde.';
-        } else if (error.message.includes('card')) {
-            mensagemErro = 'Erro ao processar cartão. Verifique os dados e tente novamente.';
+            console.error('📦 Detalhes MP:', JSON.stringify(error.response.data, null, 2));
         }
 
         return res.status(500).json({
             sucesso: false,
-            erro: mensagemErro,
-            detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
+            erro: error.message || 'Erro interno'
         });
     }
 };
