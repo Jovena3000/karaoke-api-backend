@@ -25,7 +25,7 @@ module.exports = async (req, res) => {
     }
 
     try {
-        const { plan, email, metodo, token } = req.body;
+        const { plan, email, metodo, token, payment_method_id } = req.body;
 
         console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌' });
 
@@ -81,7 +81,7 @@ module.exports = async (req, res) => {
                 token: token,
                 description: descricao,
                 installments: 1,
-                payment_method_id: 'master',
+                payment_method_id: payment_method_id,
                 payer: { email: email },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
                 external_reference: `${email}|${plan}`,
