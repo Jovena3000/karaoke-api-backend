@@ -1,14 +1,12 @@
-// api/criar-pagamento.js - VERSÃO CORRETA (CHECKOUT TRANSPARENTE)
+// api/criar-pagamento.js - VERSÃO CORRETA
 const mercadopago = require('mercadopago');
 const { processarPagamentoAprovado } = require('./webhook');
 
-// Configuração do Mercado Pago
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
 });
 
 module.exports = async (req, res) => {
-    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -18,7 +16,6 @@ module.exports = async (req, res) => {
     }
 
     console.log("🚀 CREATE PAYMENT");
-    console.log("📩 Body:", req.body);
 
     if (req.method !== 'POST') {
         return res.status(405).json({ erro: 'Método não permitido' });
@@ -39,7 +36,7 @@ module.exports = async (req, res) => {
         const valor = precos[plan] || 49.90;
         const descricao = `Plano ${plan} - Karaokê Multiplayer`;
 
-        // ================= PIX =================
+        // PIX
         if (metodo === 'pix') {
             console.log('📱 Criando PIX...');
 
@@ -64,7 +61,7 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ================= CARTÃO (CORRETO - NÃO É PREFERÊNCIA!) =================
+        // CARTÃO - NÃO É PREFERÊNCIA!
         if (metodo === 'card') {
             console.log('💳 Processando cartão...');
 
@@ -75,7 +72,7 @@ module.exports = async (req, res) => {
                 });
             }
 
-            // 🔥 ISSO É O CORRETO - NÃO É PREFERÊNCIA!
+            // 🔥 ATENÇÃO: Isso é payment.create, NÃO preferences.create!
             const paymentData = {
                 transaction_amount: Number(valor),
                 token: token,
@@ -102,7 +99,6 @@ module.exports = async (req, res) => {
             console.log('💳 Status:', payment.status);
             console.log('💳 ID:', payment.id);
 
-            // Se já foi aprovado, processa imediatamente
             if (payment.status === 'approved') {
                 console.log('✅ Pagamento aprovado! Processando...');
                 await processarPagamentoAprovado(email, plan, payment.id);
@@ -112,9 +108,7 @@ module.exports = async (req, res) => {
                 sucesso: payment.status === 'approved',
                 status: payment.status,
                 id: payment.id,
-                mensagem: payment.status === 'approved' 
-                    ? 'Pagamento aprovado!' 
-                    : 'Pagamento pendente'
+                mensagem: payment.status === 'approved' ? 'Pagamento aprovado!' : 'Pagamento pendente'
             });
         }
 
@@ -125,14 +119,12 @@ module.exports = async (req, res) => {
 
     } catch (error) {
         console.error('❌ ERRO:', error.message);
-        
         if (error.response?.data) {
-            console.error('📦 Detalhes MP:', JSON.stringify(error.response.data, null, 2));
+            console.error('📦 Detalhes:', JSON.stringify(error.response.data, null, 2));
         }
-
         return res.status(500).json({
             sucesso: false,
-            erro: error.message || 'Erro interno'
+            erro: error.message
         });
     }
 };
