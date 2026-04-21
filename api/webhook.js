@@ -1,12 +1,12 @@
 // webhook.js
-const mercadopago = require('mercadopago');
+const { MercadoPagoConfig, Payment, Preference } = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
 const { createClient } = require('@supabase/supabase-js');
 
 // ===== CONFIG =====
-mercadopago.configure({
-    access_token: process.env.MP_ACCESS_TOKEN
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN
 });
 
 const supabase = createClient(
