@@ -3,6 +3,27 @@ const { MercadoPagoConfig, Payment } = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
 const { createClient } = require('@supabase/supabase-js');
+const webhookHandler = async (req, res) => {
+    const origin = req.headers.origin;
+    
+    const allowedOrigins = [
+        'https://karaokemultiplayer.com.br',
+        'https://www.karaokemultiplayer.com.br',
+        'https://karaoke-multiplayer.pages.dev'
+    ];
+    
+    if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
 
 // ===== CONFIG =====
 const client = new MercadoPagoConfig({
