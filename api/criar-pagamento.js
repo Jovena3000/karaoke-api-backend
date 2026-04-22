@@ -27,7 +27,7 @@ module.exports = async (req, res) => {
     }
 
     try {
-        const { plan, email, metodo, token } = req.body;
+        const { plan, email, metodo, token, paymentMethodId } = req.body;
 
         console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌' });
 
