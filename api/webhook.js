@@ -68,20 +68,18 @@ function configurarCORS(req, res) {
     }
     return false;
 }
+
 // ================= FUNÇÃO AUXILIAR PARA PROCESSAR PAGAMENTO =================
 async function processarPagamentoAprovado(email, plan, paymentId = null, merchantOrderId = null) {
     console.log(`💰 Processando pagamento para ${email}`);
     console.log(`📦 Plano: ${plan}`);
     
-    // 🔧 VALIDAÇÃO DO E-MAIL (sua versão melhorada)
-    if (!email || !email.includes('@') || email === 'undefined' || email === 'null' || email === '' || email.trim() === '') {
+    // 🔧 VALIDAÇÃO DO E-MAIL
+    if (!email || !email.includes('@') || email === 'undefined' || email === 'null' || email === '') {
         console.error("❌ E-mail inválido:", email);
         return { sucesso: false, erro: "E-mail inválido" };
     }
     
-    // Limpar email
-    email = email.trim().toLowerCase();    
-        
     // Definir dias do plano
     let diasPlano = 30;
     let valorPlano = 5.00;
