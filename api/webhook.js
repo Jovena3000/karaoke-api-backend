@@ -136,20 +136,10 @@ async function processarPagamentoAprovado(email, plan, paymentId = null) {
 module.exports = async (req, res) => {
     // CORS
     const origin = req.headers.origin;
-    const allowedOrigins = [
-        'https://karaokemultiplayer.com.br',
-        'https://www.karaokemultiplayer.com.br',
-        'https://karaoke-multiplayer.pages.dev'
-    ];
-
-    if (origin && allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-    }
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+    
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -165,17 +155,17 @@ module.exports = async (req, res) => {
         const paymentId = data?.id;
 
         if (!paymentId || type !== 'payment') {
-            console.log("⛔ Evento ignorado");
             return res.status(200).end();
         }
 
         console.log(`🧾 Processando payment ID: ${paymentId}`);
 
+        // Buscar pagamento com a nova sintaxe
         const payment = await paymentClient.get({ id: paymentId });
+        
         console.log("💳 Status:", payment.status);
 
         if (payment.status !== 'approved') {
-            console.log("⏳ Pagamento não aprovado");
             return res.status(200).end();
         }
 
@@ -186,10 +176,6 @@ module.exports = async (req, res) => {
             const parts = payment.external_reference.split('|');
             email = parts[0];
             plan = parts[1];
-        }
-
-        if (!plan) {
-            plan = extrairPlanoDoValor(payment.transaction_amount);
         }
 
         if (!email) {
