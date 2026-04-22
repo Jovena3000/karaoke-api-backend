@@ -83,6 +83,7 @@ module.exports = async (req, res) => {
                     token: token,
                     description: descricao,
                     installments: 1,
+                    payment_method_id: paymentMethodId, // 🔥 DINÂMICO
                     payer: { 
                         email: email,
                         identification: {
