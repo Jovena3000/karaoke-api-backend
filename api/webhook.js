@@ -68,7 +68,7 @@ function configurarCORS(req, res) {
     }
     return false;
 }
-
+// ================= FUNÇÃO AUXILIAR PARA PROCESSAR PAGAMENTO =================
 async function processarPagamentoAprovado(email, plan, paymentId = null, merchantOrderId = null) {
     console.log(`💰 Processando pagamento para ${email}`);
     console.log(`📦 Plano: ${plan}`);
@@ -79,6 +79,9 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
         return { sucesso: false, erro: "E-mail inválido" };
     }
     
+    // Limpar email
+    email = email.trim().toLowerCase();    
+        
     // Definir dias do plano
     let diasPlano = 30;
     let valorPlano = 5.00;
