@@ -160,6 +160,11 @@ async function processarPagamentoAprovado(email, plan, paymentId = null) {
         
         const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
         const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
+		
+		// 🔥 COLE AQUI OS LOGS DE DEBUG 🔥
+    console.log("📧 EMAIL REAL QUE SERÁ ENVIADO:", email);
+    console.log("📧 TIPO DO EMAIL:", typeof email);
+    console.log("📧 TAMANHO:", email.length);
         
         const emailResult = await resend.emails.send({
             from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
