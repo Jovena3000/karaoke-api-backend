@@ -1,12 +1,9 @@
-// api/criar-pagamento.js
-const { MercadoPagoConfig, Payment } = require('mercadopago');
-const { processarPagamentoAprovado } = require('./webhook');
+// api/criar-pagamento.js - VERSÃO 1.5.14
+const mercadopago = require('mercadopago');
 
-const client = new MercadoPagoConfig({
-    accessToken: process.env.MP_ACCESS_TOKEN
+mercadopago.configure({
+    access_token: process.env.MP_ACCESS_TOKEN
 });
-
-const paymentClient = new Payment(client);
 
 module.exports = async (req, res) => {
     // CORS
@@ -43,24 +40,24 @@ module.exports = async (req, res) => {
         if (metodo === 'pix') {
             console.log('📱 Criando PIX...');
 
-            const payment = await paymentClient.create({
-                body: {
-                    transaction_amount: valor,
-                    description: descricao,
-                    payment_method_id: 'pix',
-                    payer: { email: email },
-                    notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                    external_reference: `${email}|${plan}`,
-                    metadata: { email, plan }
-                }
+            const payment = await mercadopago.payment.create({
+                transaction_amount: valor,
+                description: descricao,
+                payment_method_id: 'pix',
+                payer: { email: email },
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+                external_reference: `${email}|${plan}`,
+                metadata: { email, plan }
             });
+
+            const data = payment.body;
 
             return res.status(200).json({
                 sucesso: true,
                 metodo: 'pix',
-                id: payment.id,
-                qr_code: payment.point_of_interaction?.transaction_data?.qr_code,
-                qr_code_base64: payment.point_of_interaction?.transaction_data?.qr_code_base64
+                id: data.id,
+                qr_code: data.point_of_interaction?.transaction_data?.qr_code,
+                qr_code_base64: data.point_of_interaction?.transaction_data?.qr_code_base64
             });
         }
 
@@ -69,40 +66,59 @@ module.exports = async (req, res) => {
             console.log('💳 Processando cartão...');
 
             if (!token) {
-                return res.status(400).json({ sucesso: false, erro: 'Token do cartão não enviado' });
+                return res.status(400).json({
+                    sucesso: false,
+                    erro: 'Token do cartão não enviado'
+                });
             }
 
-            const payment = await paymentClient.create({
-                body: {
-                    transaction_amount: Number(valor),
-                    token: token,
-                    description: descricao,
-                    installments: 1,
-                    payment_method_id: 'master',
-                    payer: { email: email },
-                    notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                    external_reference: `${email}|${plan}`,
-                    metadata: { email, plan }
-                }
-            });
+            const paymentData = {
+                transaction_amount: Number(valor),
+                token: token,
+                description: descricao,
+                installments: 1,
+                payment_method_id: 'master',
+                payer: { 
+                    email: email,
+                    identification: {
+                        type: 'CPF',
+                        number: '19119119100'
+                    }
+                },
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+                external_reference: `${email}|${plan}`,
+                metadata: { email, plan }
+            };
+
+            console.log('📤 Enviando pagamento para MP...');
+
+            const response = await mercadopago.payment.create(paymentData);
+            const payment = response.body;
 
             console.log('💳 Status:', payment.status);
-
-            if (payment.status === 'approved') {
-                await processarPagamentoAprovado(email, plan, payment.id);
-            }
+            console.log('💳 ID:', payment.id);
 
             return res.status(200).json({
                 sucesso: payment.status === 'approved',
                 status: payment.status,
-                id: payment.id
+                id: payment.id,
+                mensagem: payment.status === 'approved' ? 'Pagamento aprovado!' : 'Pagamento pendente'
             });
         }
 
-        return res.status(400).json({ sucesso: false, erro: 'Método inválido' });
+        return res.status(400).json({
+            sucesso: false,
+            erro: 'Método de pagamento inválido'
+        });
 
     } catch (error) {
         console.error('❌ ERRO:', error.message);
-        return res.status(500).json({ sucesso: false, erro: error.message });
+        if (error.response?.data) {
+            console.error('📦 Detalhes:', error.response.data);
+        }
+        return res.status(500).json({
+            sucesso: false,
+            erro: error.message || 'Erro interno do servidor'
+        });
     }
 };
