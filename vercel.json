@@ -1,18 +1,4 @@
 {
-  "functions": {
-    "api/criar-pagamento.js": { "maxDuration": 30 },
-    "api/webhook.js":         { "maxDuration": 30 },
-    "api/verificar-pagamento.js": { "maxDuration": 15 }
-  },
-  "rewrites": [
-    { "source": "/api/criar-pagamento", "destination": "/api/criar-pagamento.js" },
-    { "source": "/api/webhook",         "destination": "/api/webhook.js" },
-    { "source": "/api/auth/login",      "destination": "/index.js" },
-    { "source": "/api/auth/register",   "destination": "/index.js" },
-    { "source": "/api/auth/me",         "destination": "/index.js" },
-    { "source": "/api/status",          "destination": "/index.js" },
-    { "source": "/api/verificar-pagamento", "destination": "/index.js" }
-  ],
   "redirects": [
     {
       "source": "/(.*)",
@@ -24,11 +10,6 @@
       ],
       "destination": "https://karaokemultiplayer.com.br/$1",
       "permanent": true
-    },
-    {
-      "source": "/checkout",
-      "destination": "/checkout-bricks.html",
-      "permanent": false
     }
   ],
   "headers": [
@@ -36,16 +17,8 @@
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options",        "value": "SAMEORIGIN" },
-        { "key": "X-XSS-Protection",       "value": "1; mode=block" }
-      ]
-    },
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin",  "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-XSS-Protection", "value": "1; mode=block" }
       ]
     }
   ],
