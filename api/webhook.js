@@ -205,76 +205,115 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, payment
     console.log(`🔑 Senha: ${senhaTemporaria}`);
     console.log(`📅 Expira em: ${dataExpiracaoStr}`);
 
-    // ================= ENVIAR E-MAIL =================
+            // ================= ENVIAR E-MAIL =================
     try {
-        console.log("📧 Enviando e-mail para:", email);
+        console.log("📧 Iniciando envio de e-mail para:", email);
+        console.log("🔑 Senha temporária:", senhaTemporaria);
+        console.log("📅 Data expiração:", dataExpiracao);
+        
+        // Verificar se a API key do Resend está configurada
+        if (!process.env.RESEND_API_KEY) {
+            console.error("❌ RESEND_API_KEY não está configurada nas variáveis de ambiente!");
+            throw new Error("RESEND_API_KEY não configurada");
+        }
+        
+        console.log("✅ RESEND_API_KEY está configurada (prefixo:", process.env.RESEND_API_KEY.substring(0, 10) + "...)");
+        
+        // Verificar se o Resend foi inicializado
+        if (!resend) {
+            console.error("❌ Resend não foi inicializado corretamente!");
+            throw new Error("Resend não inicializado");
+        }
+        
+        console.log("✅ Resend inicializado com sucesso");
 
         const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
         const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
+        
+        let valorPlano = 5.00;
+        if (plan === "trimestral") valorPlano = 49.90;
+        if (plan === "semestral") valorPlano = 89.90;
+        if (plan === "anual") valorPlano = 159.90;
 
+        console.log("📧 Preparando HTML do email...");
+
+        const emailHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
+                .credential-box { background: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center; }
+                .senha { font-size: 28px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: monospace; }
+                .button { background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; font-weight: bold; }
+                .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🎤 Pagamento Confirmado!</h1>
+                    <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
+                </div>
+                <div class="content">
+                    <h2>Olá ${email.split('@')[0]}!</h2>
+                    <p>Recebemos a confirmação do seu pagamento com sucesso.</p>
+                    
+                    <p><strong>📋 Plano:</strong> Plano ${planoCapitalizado}</p>
+                    <p><strong>💰 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
+                    <p><strong>📅 Expira em:</strong> ${dataFormatada}</p>
+                    
+                    <div class="credential-box">
+                        <h3 style="margin-top: 0;">🔑 SUAS CREDENCIAIS DE ACESSO</h3>
+                        <p><strong>E-mail:</strong> ${email}</p>
+                        <p><strong>Senha temporária:</strong></p>
+                        <div class="senha">${senhaTemporaria}</div>
+                        <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <a href="https://karaokemultiplayer.com.br/login.html" class="button">🎤 ACESSAR KARAOKÊ</a>
+                    </div>
+                </div>
+                <div class="footer">
+                    <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        `;
+
+        console.log("📧 Enviando email via Resend...");
+        
         const emailResult = await resend.emails.send({
             from: "Karaokê Multiplayer <onboarding@resend.dev>",
             to: email,
-            subject: "✅ Pagamento Confirmado - Acesso Liberado!",
-            html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-                    .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
-                    .credential-box { background: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center; }
-                    .senha { font-size: 28px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: monospace; }
-                    .button { background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; font-weight: bold; }
-                    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>🎤 Pagamento Confirmado!</h1>
-                        <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
-                    </div>
-                    <div class="content">
-                        <h2>Olá ${email.split('@')[0]}!</h2>
-                        <p>Recebemos a confirmação do seu pagamento com sucesso.</p>
-                        
-                        <p><strong>📋 Plano:</strong> Plano ${planoCapitalizado}</p>
-                        <p><strong>💰 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
-                        <p><strong>📅 Expira em:</strong> ${dataFormatada}</p>
-                        
-                        <div class="credential-box">
-                            <h3 style="margin-top: 0;">🔑 SUAS CREDENCIAIS DE ACESSO</h3>
-                            <p><strong>E-mail:</strong> ${email}</p>
-                            <p><strong>Senha temporária:</strong></p>
-                            <div class="senha">${senhaTemporaria}</div>
-                            <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
-                        </div>
-                        
-                        <div style="text-align: center;">
-                            <a href="https://karaokemultiplayer.com.br/login.html" class="button">🎤 ACESSAR KARAOKÊ</a>
-                        </div>
-                    </div>
-                    <div class="footer">
-                        <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-            `
+            subject: "✅ Pagamento Confirmado - Sua senha de acesso",
+            html: emailHtml
         });
 
-        console.log("✅ Email enviado com sucesso! ID:", emailResult?.id);
+        console.log("✅ Email enviado com sucesso!");
+        console.log("📧 Resposta do Resend:", JSON.stringify(emailResult, null, 2));
+        console.log("🆔 ID do email:", emailResult?.id);
 
     } catch (erroEmail) {
-        console.error("❌ Erro ao enviar email:", erroEmail.message);
+        console.error("❌❌❌ ERRO DETALHADO AO ENVIAR EMAIL ❌❌❌");
+        console.error("Mensagem:", erroEmail.message);
+        console.error("Stack:", erroEmail.stack);
+        
+        if (erroEmail.response) {
+            console.error("Resposta do servidor:", erroEmail.response);
+        }
+        
+        // Não retorna erro para não interromper o fluxo
+        console.error("⚠️ O usuário foi ativado, mas o email não foi enviado.");
     }
 
     return { sucesso: true, email, plan, senha: senhaTemporaria };
-}
 
 // ================= WEBHOOK PRINCIPAL =================
 module.exports = async (req, res) => {
