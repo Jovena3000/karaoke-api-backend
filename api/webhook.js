@@ -1,4 +1,4 @@
-// webhook.js - VERSÃO DEFINITIVA COMPLETA v4
+// webhook.js - VERSÃO COMPLETA DEFINITIVA
 const mercadopago = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
@@ -78,17 +78,18 @@ function emailEhValido(email) {
     if (typeof email !== 'string') return false;
     if (email === 'undefined' || email === 'null') return false;
     if (email.trim() === '') return false;
-    
-    // Se o email está mascarado pelo MP, tentamos extrair do payment original
-    if (email === 'XXXXXXXXXXX' || email.includes('XXX')) {
-        console.log("⚠️ Email está mascarado:", email);
+    if (!email.includes('@')) return false;
+
+    const emailsFakes = [
+        'testuser', 'test_user', 'noreply', 'no-reply', 
+        '@mercadopago', '@mercadolivre', 'payment@mercadopago',
+        'payment.mercadopago', 'email@email.com'
+    ];
+    if (emailsFakes.some(str => email.toLowerCase().includes(str))) {
+        console.warn("⚠️ E-mail parece ser gerado automaticamente pelo MP:", email);
         return false;
     }
-    
-    // Verifica se tem @ e formato básico
-    if (!email.includes('@')) return false;
-    
-    // Valida formato básico com regex
+
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return regex.test(email.trim());
 }
@@ -98,7 +99,6 @@ async function buscarEmailDiretoDoMP(paymentId) {
     try {
         console.log(`🔍 Buscando email diretamente do MP para payment ${paymentId}...`);
         
-        // Método alternativo: buscar via fetch direto na API do MP
         const accessToken = process.env.MP_ACCESS_TOKEN;
         const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
             headers: {
@@ -114,7 +114,6 @@ async function buscarEmailDiretoDoMP(paymentId) {
             external_reference: payment.external_reference
         }, null, 2));
         
-        // Retorna o email bruto da API
         return payment.payer?.email || null;
         
     } catch (error) {
@@ -128,32 +127,54 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, payment
     console.log(`💰 Processando pagamento para ${email}`);
     console.log(`📦 Plano: ${plan}`);
 
-    if (!email || email === 'XXXXXXXXXXX') {
-        console.error("❌ Email inválido:", email);
-        return { sucesso: false, erro: "E-mail inválido" };
+    if (!emailEhValido(email)) {
+        console.error("❌ E-mail inválido recebido:", email);
+
+        if (paymentData && paymentData.payer?.email) {
+            const emailRecuperado = paymentData.payer.email;
+            if (emailEhValido(emailRecuperado)) {
+                email = emailRecuperado;
+                console.log("✅ Email recuperado do paymentData:", email);
+            }
+        }
+        
+        if (!emailEhValido(email) && paymentId) {
+            try {
+                const response = await mercadopago.payment.findById(paymentId);
+                const payment = response.body;
+                const emailRecuperado = payment.payer?.email;
+
+                if (emailEhValido(emailRecuperado)) {
+                    email = emailRecuperado;
+                    console.log("✅ Email recuperado do pagamento via API:", email);
+                }
+            } catch (err) {
+                console.error("❌ Não foi possível recuperar email do pagamento:", err.message);
+            }
+        }
+
+        if (!emailEhValido(email)) {
+            console.error("❌ Abortando: nenhum e-mail válido encontrado.");
+            return { sucesso: false, erro: "E-mail inválido" };
+        }
     }
 
-    // Limpar e normalizar email
     email = email.trim().toLowerCase();
-    console.log("📧 Email normalizado:", email);
+    console.log("📧 Email validado e normalizado:", email);
 
-    // Definir dias do plano
     let diasPlano = 30;
     let valorPlano = 5.00;
     if (plan === "trimestral") { diasPlano = 90; valorPlano = 49.90; }
     if (plan === "semestral") { diasPlano = 180; valorPlano = 89.90; }
     if (plan === "anual") { diasPlano = 365; valorPlano = 159.90; }
 
-    // Gerar senha
     const senhaTemporaria = Math.random().toString(36).slice(-8);
     const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
 
-    // Data de expiração
     const dataExpiracao = new Date();
     dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
     const dataExpiracaoStr = dataExpiracao.toISOString().split('T')[0];
 
-    // Verificar se usuário já existe
     const { data: usuarioExistente } = await supabase
         .from("usuarios")
         .select("*")
@@ -205,119 +226,83 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, payment
     console.log(`🔑 Senha: ${senhaTemporaria}`);
     console.log(`📅 Expira em: ${dataExpiracaoStr}`);
 
-            // ================= ENVIAR E-MAIL =================
+    // ================= ENVIAR E-MAIL =================
     try {
-        console.log("📧 Iniciando envio de e-mail para:", email);
-        console.log("🔑 Senha temporária:", senhaTemporaria);
-        console.log("📅 Data expiração:", dataExpiracao);
-        
-        // Verificar se a API key do Resend está configurada
+        console.log("📧 Enviando e-mail para:", email);
+
         if (!process.env.RESEND_API_KEY) {
-            console.error("❌ RESEND_API_KEY não está configurada nas variáveis de ambiente!");
-            throw new Error("RESEND_API_KEY não configurada");
-        }
-        
-        console.log("✅ RESEND_API_KEY está configurada (prefixo:", process.env.RESEND_API_KEY.substring(0, 10) + "...)");
-        
-        // Verificar se o Resend foi inicializado
-        if (!resend) {
-            console.error("❌ Resend não foi inicializado corretamente!");
-            throw new Error("Resend não inicializado");
-        }
-        
-        console.log("✅ Resend inicializado com sucesso");
+            console.error("❌ RESEND_API_KEY não está configurada!");
+        } else {
+            const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
+            const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
 
-        const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
-        const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
-        
-        let valorPlano = 5.00;
-        if (plan === "trimestral") valorPlano = 49.90;
-        if (plan === "semestral") valorPlano = 89.90;
-        if (plan === "anual") valorPlano = 159.90;
-
-        console.log("📧 Preparando HTML do email...");
-
-        const emailHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-                .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
-                .credential-box { background: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center; }
-                .senha { font-size: 28px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: monospace; }
-                .button { background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; font-weight: bold; }
-                .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>🎤 Pagamento Confirmado!</h1>
-                    <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
-                </div>
-                <div class="content">
-                    <h2>Olá ${email.split('@')[0]}!</h2>
-                    <p>Recebemos a confirmação do seu pagamento com sucesso.</p>
-                    
-                    <p><strong>📋 Plano:</strong> Plano ${planoCapitalizado}</p>
-                    <p><strong>💰 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
-                    <p><strong>📅 Expira em:</strong> ${dataFormatada}</p>
-                    
-                    <div class="credential-box">
-                        <h3 style="margin-top: 0;">🔑 SUAS CREDENCIAIS DE ACESSO</h3>
-                        <p><strong>E-mail:</strong> ${email}</p>
-                        <p><strong>Senha temporária:</strong></p>
-                        <div class="senha">${senhaTemporaria}</div>
-                        <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
+            const emailResult = await resend.emails.send({
+                from: "Karaokê Multiplayer <onboarding@resend.dev>",
+                to: email,
+                subject: "✅ Pagamento Confirmado - Acesso Liberado!",
+                html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                        .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
+                        .credential-box { background: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center; }
+                        .senha { font-size: 28px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: monospace; }
+                        .button { background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; font-weight: bold; }
+                        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>🎤 Pagamento Confirmado!</h1>
+                            <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
+                        </div>
+                        <div class="content">
+                            <h2>Olá ${email.split('@')[0]}!</h2>
+                            <p>Recebemos a confirmação do seu pagamento com sucesso.</p>
+                            
+                            <p><strong>📋 Plano:</strong> Plano ${planoCapitalizado}</p>
+                            <p><strong>💰 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
+                            <p><strong>📅 Expira em:</strong> ${dataFormatada}</p>
+                            
+                            <div class="credential-box">
+                                <h3 style="margin-top: 0;">🔑 SUAS CREDENCIAIS DE ACESSO</h3>
+                                <p><strong>E-mail:</strong> ${email}</p>
+                                <p><strong>Senha temporária:</strong></p>
+                                <div class="senha">${senhaTemporaria}</div>
+                                <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
+                            </div>
+                            
+                            <div style="text-align: center;">
+                                <a href="https://karaokemultiplayer.com.br/login.html" class="button">🎤 ACESSAR KARAOKÊ</a>
+                            </div>
+                        </div>
+                        <div class="footer">
+                            <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
+                        </div>
                     </div>
-                    
-                    <div style="text-align: center;">
-                        <a href="https://karaokemultiplayer.com.br/login.html" class="button">🎤 ACESSAR KARAOKÊ</a>
-                    </div>
-                </div>
-                <div class="footer">
-                    <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        `;
+                </body>
+                </html>
+                `
+            });
 
-        console.log("📧 Enviando email via Resend...");
-        
-        const emailResult = await resend.emails.send({
-            from: "Karaokê Multiplayer <onboarding@resend.dev>",
-            to: email,
-            subject: "✅ Pagamento Confirmado - Sua senha de acesso",
-            html: emailHtml
-        });
-
-        console.log("✅ Email enviado com sucesso!");
-        console.log("📧 Resposta do Resend:", JSON.stringify(emailResult, null, 2));
-        console.log("🆔 ID do email:", emailResult?.id);
-
+            console.log("✅ Email enviado com sucesso! ID:", emailResult?.id);
+        }
     } catch (erroEmail) {
-        console.error("❌❌❌ ERRO DETALHADO AO ENVIAR EMAIL ❌❌❌");
-        console.error("Mensagem:", erroEmail.message);
-        console.error("Stack:", erroEmail.stack);
-        
-        if (erroEmail.response) {
-            console.error("Resposta do servidor:", erroEmail.response);
-        }
-        
-        // Não retorna erro para não interromper o fluxo
-        console.error("⚠️ O usuário foi ativado, mas o email não foi enviado.");
+        console.error("❌ Erro ao enviar email:", erroEmail.message);
     }
 
     return { sucesso: true, email, plan, senha: senhaTemporaria };
+}
 
 // ================= WEBHOOK PRINCIPAL =================
 module.exports = async (req, res) => {
-    console.log("🚀 WEBHOOK FINAL ATIVO v4");
+    console.log("🚀 WEBHOOK FINAL ATIVO v5");
     console.log("📝 Method:", req.method);
     console.log("📝 Origin:", req.headers.origin);
 
@@ -339,7 +324,6 @@ module.exports = async (req, res) => {
 
         console.log("📌 Evento recebido:", { action, type, topic, dataId });
 
-        // Verificar se é um evento de pagamento
         const isPaymentEvent = (type === "payment" || topic === "payment" || 
                                  action === "payment.created" || action === "payment.updated");
         
@@ -355,17 +339,6 @@ module.exports = async (req, res) => {
 
             await ensureTableExists();
 
-            // 🔥 BUSCAR EMAIL DIRETO DA API DO MERCADO PAGO
-            const emailReal = await buscarEmailDiretoDoMP(paymentId);
-            
-            if (!emailReal || emailReal === 'XXXXXXXXXXX') {
-                console.error("❌ Não foi possível obter o email real do pagamento");
-                return res.status(200).json({ received: true, error: "Email not found" });
-            }
-
-            console.log(`✅ Email real obtido: ${emailReal}`);
-
-            // Buscar detalhes do pagamento com retentativas
             let payment = null;
 
             for (let i = 0; i < 5; i++) {
@@ -388,8 +361,16 @@ module.exports = async (req, res) => {
                 return res.status(200).json({ received: true });
             }
 
+            console.log("🔍 PAYMENT DEBUG:", JSON.stringify({
+                id: payment.id,
+                status: payment.status,
+                transaction_amount: payment.transaction_amount,
+                payer_email: payment.payer?.email,
+                external_reference: payment.external_reference,
+                metadata: payment.metadata
+            }, null, 2));
+
             console.log("💳 Status pagamento:", payment.status);
-            console.log("💰 Valor:", payment.transaction_amount);
 
             if (payment.status !== "approved") {
                 console.log("⏳ Pagamento não aprovado. Status:", payment.status);
@@ -398,12 +379,47 @@ module.exports = async (req, res) => {
 
             console.log("✅ Pagamento aprovado!");
 
-            // Extrair plano
-            const plan = extrairPlanoDoValor(payment.transaction_amount);
-            console.log(`✅ Plano: ${plan}`);
+            let email = null;
+            let plan = null;
 
-            // Processar o pagamento
-            await processarPagamentoAprovado(emailReal, plan, paymentId, payment);
+            if (payment.payer?.email && emailEhValido(payment.payer.email)) {
+                email = payment.payer.email;
+                console.log("✅ [1] Email encontrado no payer.email:", email);
+            }
+
+            if (!email && payment.external_reference && emailEhValido(payment.external_reference)) {
+                email = payment.external_reference;
+                console.log("✅ [2] Email encontrado no external_reference:", email);
+            }
+
+            if (!email && payment.metadata?.email && emailEhValido(payment.metadata.email)) {
+                email = payment.metadata.email;
+                plan = plan || payment.metadata.plan;
+                console.log("✅ [3] Email encontrado no metadata:", email);
+            }
+
+            if (!email && payment.description) {
+                const emailMatch = payment.description.match(/[\w\.-]+@[\w\.-]+\.\w+/);
+                if (emailMatch && emailEhValido(emailMatch[0])) {
+                    email = emailMatch[0];
+                    console.log("✅ [4] Email encontrado na description:", email);
+                }
+            }
+
+            if (!plan) {
+                plan = extrairPlanoDoValor(payment.transaction_amount);
+                console.log("✅ Plano extraído do valor:", plan);
+            }
+
+            if (!email) {
+                console.error("❌ Email não encontrado em nenhuma fonte.");
+                return res.status(200).json({ received: true, error: "Email not found" });
+            }
+
+            console.log(`👤 Cliente: ${email}`);
+            console.log(`📦 Plano: ${plan}`);
+
+            await processarPagamentoAprovado(email, plan, paymentId, payment);
 
             console.log("🎉 Pagamento processado com sucesso!");
             return res.status(200).json({ sucesso: true });
