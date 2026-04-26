@@ -1,3 +1,4 @@
+// webhook.js - VERSÃO CORRIGIDA v2
 const mercadopago = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
@@ -15,7 +16,7 @@ const supabase = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// ===== FUNÇÃO AUXILIAR PARA CRIAR TABELA DE LOG (se não existir) =====
+// ===== FUNÇÃO AUXILIAR PARA CRIAR TABELA DE LOG =====
 async function ensureTableExists() {
     const { error } = await supabase
         .from('pagamentos_processados')
@@ -24,19 +25,7 @@ async function ensureTableExists() {
         .maybeSingle();
     
     if (error && error.message.includes('does not exist')) {
-        console.log('📦 Criando tabela pagamentos_processados...');
-        // Criar tabela se não existir
-        await supabase.rpc('create_pagamentos_table').catch(async () => {
-            // Se a função RPC não existir, criar a tabela via SQL
-            const { error: createError } = await supabase
-                .from('pagamentos_processados')
-                .insert({ id: 'temp' })
-                .select();
-            if (createError && createError.message.includes('does not exist')) {
-                console.log('⚠️ Tabela pagamentos_processados não existe. Continuando sem lock.');
-                return false;
-            }
-        });
+        console.log('📦 Tabela pagamentos_processados não existe. Continuando sem lock.');
     }
     return true;
 }
@@ -61,7 +50,6 @@ function configurarCORS(req, res) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     
-    // Se for OPTIONS, responde e retorna true
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return true;
@@ -69,40 +57,95 @@ function configurarCORS(req, res) {
     return false;
 }
 
-// ================= FUNÇÃO AUXILIAR PARA PROCESSAR PAGAMENTO =================
-async function processarPagamentoAprovado(email, plan, paymentId = null, merchantOrderId = null) {
+// ================= FUNÇÃO PARA EXTRAIR PLANO DO VALOR =================
+function extrairPlanoDoValor(valor) {
+    if (valor === 5.00 || valor === 5) return "mensal";
+    if (valor === 49.90 || valor === 49.9) return "trimestral";
+    if (valor === 89.90 || valor === 89.9) return "semestral";
+    if (valor === 159.90 || valor === 159.9) return "anual";
+    return "trimestral";
+}
+
+// ================= VALIDAÇÃO DE E-MAIL =================
+function emailEhValido(email) {
+    if (!email) return false;
+    if (typeof email !== 'string') return false;
+    if (email === 'undefined' || email === 'null') return false;
+    if (email.trim() === '') return false;
+    if (!email.includes('@')) return false;
+
+    // Rejeita e-mails gerados automaticamente pelo Mercado Pago
+    const emailsFakes = ['testuser', 'test_user', 'noreply', 'no-reply', '@mercadopago', '@mercadolivre'];
+    if (emailsFakes.some(str => email.toLowerCase().includes(str))) {
+        console.warn("⚠️ E-mail parece ser gerado automaticamente pelo MP:", email);
+        return false;
+    }
+
+    // Valida formato básico com regex
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return regex.test(email.trim());
+}
+
+// ================= FUNÇÃO PRINCIPAL DE PROCESSAMENTO =================
+async function processarPagamentoAprovado(email, plan, paymentId = null) {
     console.log(`💰 Processando pagamento para ${email}`);
     console.log(`📦 Plano: ${plan}`);
-    
-    // 🔧 VALIDAÇÃO DO E-MAIL
-    if (!email || !email.includes('@') || email === 'undefined' || email === 'null' || email === '') {
-        console.error("❌ E-mail inválido:", email);
-        return { sucesso: false, erro: "E-mail inválido" };
+
+    // 🔥 VALIDAÇÃO ROBUSTA DO E-MAIL
+    if (!emailEhValido(email)) {
+        console.error("❌ E-mail inválido recebido:", email);
+
+        // Tenta recuperar do pagamento
+        if (paymentId) {
+            try {
+                const response = await mercadopago.payment.findById(paymentId);
+                const payment = response.body;
+                const emailRecuperado = payment.payer?.email;
+
+                if (emailEhValido(emailRecuperado)) {
+                    email = emailRecuperado;
+                    console.log("✅ Email recuperado do pagamento:", email);
+                } else {
+                    console.error("❌ payer.email também é inválido:", emailRecuperado);
+                }
+            } catch (err) {
+                console.error("❌ Não foi possível recuperar email do pagamento:", err.message);
+            }
+        }
+
+        if (!emailEhValido(email)) {
+            console.error("❌ Abortando: nenhum e-mail válido encontrado.");
+            return { sucesso: false, erro: "E-mail inválido" };
+        }
     }
-    
+
+    // Limpar e normalizar email
+    email = email.trim().toLowerCase();
+    console.log("📧 Email validado e normalizado:", email);
+
     // Definir dias do plano
     let diasPlano = 30;
     let valorPlano = 5.00;
     if (plan === "trimestral") { diasPlano = 90; valorPlano = 49.90; }
     if (plan === "semestral") { diasPlano = 180; valorPlano = 89.90; }
     if (plan === "anual") { diasPlano = 365; valorPlano = 159.90; }
-    
+
     // Gerar senha
     const senhaTemporaria = Math.random().toString(36).slice(-8);
     const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
-    
+
     // Data de expiração
     const dataExpiracao = new Date();
     dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
     const dataExpiracaoStr = dataExpiracao.toISOString().split('T')[0];
-    
+
     // Verificar se usuário já existe
     const { data: usuarioExistente } = await supabase
         .from("usuarios")
         .select("*")
         .eq("email", email)
         .maybeSingle();
-    
+
     if (usuarioExistente) {
         console.log("🔄 Atualizando usuário existente");
         await supabase
@@ -131,18 +174,20 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
                 created_at: new Date().toISOString()
             });
     }
-    
+
     console.log(`✅ Usuário ${email} ativado com plano ${plan}`);
     console.log(`🔑 Senha: ${senhaTemporaria}`);
     console.log(`📅 Expira em: ${dataExpiracaoStr}`);
-    
-    // ================= ENVIAR E-MAIL COM RESEND =================
+
+    // ================= ENVIAR E-MAIL =================
     try {
         console.log("📧 Enviando e-mail para:", email);
-        
+        console.log("📧 TIPO DO EMAIL:", typeof email);
+        console.log("📧 TAMANHO:", email.length);
+
         const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
         const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
-        
+
         const emailResult = await resend.emails.send({
             from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
             to: email,
@@ -171,7 +216,7 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
                     </div>
                     <div class="content">
                         <h2>Olá ${email.split('@')[0]}!</h2>
-                        <p>Recebemos a confirmação do seu pagamento com sucesso. Aqui estão os detalhes da sua compra:</p>
+                        <p>Recebemos a confirmação do seu pagamento com sucesso.</p>
                         
                         <p><strong>📋 Plano:</strong> Plano ${planoCapitalizado}</p>
                         <p><strong>💰 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
@@ -188,8 +233,6 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
                         <div style="text-align: center;">
                             <a href="https://karaokemultiplayer.com.br/login.html" class="button">🎤 ACESSAR KARAOKÊ</a>
                         </div>
-                        
-                        <p style="margin-top: 20px;">Qualquer dúvida, responda a este e-mail ou entre em contato com nosso suporte.</p>
                     </div>
                     <div class="footer">
                         <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
@@ -199,36 +242,25 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, merchan
             </html>
             `
         });
-        
-        console.log("✅ Email enviado com sucesso para:", email);
-        
+
+        console.log("✅ Email enviado com sucesso! ID:", emailResult?.id);
+
     } catch (erroEmail) {
         console.error("❌ Erro ao enviar email:", erroEmail.message);
         console.error("📧 Email que causou erro:", email);
+        // Não lança o erro — o usuário já foi criado/atualizado no banco
     }
-    
-    return { sucesso: true, email, plan, senha: senhaTemporaria };
-}
 
-// ================= FUNÇÃO PARA EXTRAIR PLANO DO VALOR =================
-function extrairPlanoDoValor(valor) {
-    if (valor === 5.00 || valor === 5) return "mensal";
-    if (valor === 49.90 || valor === 49.9) return "trimestral";
-    if (valor === 89.90 || valor === 89.9) return "semestral";
-    if (valor === 159.90 || valor === 159.9) return "anual";
-    return "trimestral";
+    return { sucesso: true, email, plan, senha: senhaTemporaria };
 }
 
 // ================= WEBHOOK PRINCIPAL =================
 module.exports = async (req, res) => {
-    console.log("🚀 WEBHOOK FINAL ATIVO");
+    console.log("🚀 WEBHOOK FINAL ATIVO v2");
     console.log("📝 Method:", req.method);
     console.log("📝 Origin:", req.headers.origin);
 
-    // Configurar CORS (se for OPTIONS, já responde)
-    if (configurarCORS(req, res)) {
-        return;
-    }
+    if (configurarCORS(req, res)) return;
 
     if (req.method !== "POST") {
         return res.status(200).end();
@@ -238,211 +270,127 @@ module.exports = async (req, res) => {
         console.log("📩 Webhook recebido");
         console.log("BODY:", JSON.stringify(req.body));
 
-        // ================= PEGAR TIPO DO EVENTO =================
         const action = req.body?.action;
         const type = req.body?.type;
         const topic = req.body?.topic;
         const dataId = req.body?.data?.id;
-        
+
         console.log("📌 Evento recebido:", { action, type, topic, dataId });
 
-               // ================= PROCESSAR PAYMENT (PIX e CARTÃO) =================
         if (type === "payment" || topic === "payment" || action === "payment.created" || action === "payment.updated") {
             const paymentId = dataId || req.body?.id;
-            
+
             if (!paymentId) {
                 console.log("❌ paymentId não encontrado");
                 return res.status(200).end();
             }
-            
+
             console.log(`🧾 Processando payment ID: ${paymentId}`);
-            
-            // 🔒 LOCK ANTI-DUPLICAÇÃO
+
             await ensureTableExists();
-            
-            try {
-                const { error: lockError } = await supabase
-                    .from("pagamentos_processados")
-                    .insert({ 
-                        id: String(paymentId), 
-                        processado_em: new Date().toISOString(), 
-                        tipo: 'payment',
-                        payment_id: paymentId
-                    });
-                
-                if (lockError && lockError.code === '23505') {
-                    console.log("⚠️ Pagamento já processado (evitando duplicidade):", paymentId);
-                    return res.status(200).end();
-                }
-            } catch (lockErr) {
-                console.log("⚠️ Erro no lock, continuando:", lockErr.message);
-            }
-            
-            // Buscar detalhes do pagamento
+
+            // Buscar pagamento com retentativas
             let payment = null;
-            
+
             for (let i = 0; i < 6; i++) {
                 try {
                     console.log(`🔄 Tentativa ${i + 1} de buscar pagamento...`);
-                    
                     const response = await mercadopago.payment.findById(paymentId);
                     payment = response.body;
-                    
                     if (payment && payment.status) {
                         console.log("✅ Pagamento encontrado");
                         break;
                     }
                 } catch (err) {
-                    if (err.status === 404 || (err.message && err.message.includes('404'))) {
-                        console.log("⏳ Payment ainda não disponível, aguardando...");
-                    } else {
-                        console.error("❌ Erro inesperado:", err.message);
-                    }
+                    console.log(`⏳ Tentativa ${i + 1} falhou:`, err.message);
                 }
                 await new Promise(r => setTimeout(r, 2000));
             }
-            
+
             if (!payment || !payment.status) {
-                console.log("❌ Não conseguiu obter pagamento após tentativas");
+                console.log("❌ Não conseguiu obter pagamento após todas as tentativas");
                 return res.status(200).end();
             }
-            
+
+            // 🔍 LOG COMPLETO DO PAGAMENTO PARA DEBUG
+            console.log("🔍 PAYMENT DEBUG:", JSON.stringify({
+                status: payment.status,
+                external_reference: payment.external_reference,
+                metadata: payment.metadata,
+                payer: payment.payer,
+                transaction_amount: payment.transaction_amount
+            }, null, 2));
+
             console.log("💳 Status pagamento:", payment.status);
-            console.log("💳 Status detalhe:", payment.status_detail);
-            console.log("💳 Método pagamento:", payment.payment_method_id);
-            console.log("💳 Valor:", payment.transaction_amount);
-            console.log("🔑 external_reference:", payment.external_reference);
-            
-            // ✅ VERIFICAÇÃO CORRIGIDA - apenas status approved
+
             if (payment.status !== "approved") {
-                console.log("⏳ Pagamento ainda não aprovado. Status:", payment.status);
+                console.log("⏳ Pagamento não aprovado. Status:", payment.status);
                 return res.status(200).end();
             }
-            
+
             console.log("✅ Pagamento aprovado!");
-            
-            // Extrair email e plano
+
+            // Extrair email e plano — ordem de prioridade
             let email = null;
             let plan = null;
-            
-            // Tentativa 1: external_reference
-            if (payment.external_reference) {
-                console.log("📦 external_reference encontrado:", payment.external_reference);
-                
-                if (payment.external_reference.includes('|')) {
-                    const parts = payment.external_reference.split('|');
-                    email = parts[0];
-                    plan = parts[1];
-                    console.log("✅ Extraído via pipe:", { email, plan });
+
+            // 1️⃣ Prioridade máxima: external_reference com pipe
+            if (payment.external_reference && payment.external_reference.includes('|')) {
+                const parts = payment.external_reference.split('|');
+                const emailCandidate = parts[0]?.trim();
+                const planCandidate = parts[1]?.trim();
+
+                if (emailEhValido(emailCandidate)) {
+                    email = emailCandidate;
+                    plan = planCandidate;
+                    console.log("✅ [1] Extraído via external_reference pipe:", { email, plan });
                 } else {
-                    try {
-                        const ref = JSON.parse(payment.external_reference);
-                        email = ref.email;
-                        plan = ref.plan;
-                        console.log("✅ Extraído via JSON:", { email, plan });
-                    } catch (e) {
-                        console.log("⚠️ external_reference não é JSON válido:", e.message);
-                    }
+                    console.warn("⚠️ [1] external_reference tem pipe mas email inválido:", emailCandidate);
                 }
-            } else {
-                console.log("⚠️ external_reference está VAZIO!");
             }
-            
-            // Tentativa 2: metadata
-            if (!email && payment.metadata) {
+
+            // 2️⃣ external_reference sem pipe (só o e-mail)
+            if (!email && payment.external_reference && emailEhValido(payment.external_reference.trim())) {
+                email = payment.external_reference.trim();
+                console.log("✅ [2] Extraído via external_reference (só email):", email);
+            }
+
+            // 3️⃣ metadata
+            if (!email && payment.metadata?.email && emailEhValido(payment.metadata.email)) {
                 email = payment.metadata.email;
-                plan = payment.metadata.plan;
-                console.log("✅ Extraído via metadata:", { email, plan });
+                plan = plan || payment.metadata.plan;
+                console.log("✅ [3] Extraído via metadata:", { email, plan });
             }
-            
-            // Tentativa 3: payer.email
-            if (!email && payment.payer?.email) {
+
+            // 4️⃣ payer.email (menos confiável — pode vir mascarado pelo MP)
+            if (!email && payment.payer?.email && emailEhValido(payment.payer.email)) {
                 email = payment.payer.email;
-                console.log("✅ Extraído via payer.email:", email);
+                console.log("✅ [4] Extraído via payer.email:", email);
             }
-            
-            // Tentativa 4: extrair plano do valor
+
+            // Fallback de plano pelo valor
             if (!plan) {
                 plan = extrairPlanoDoValor(payment.transaction_amount);
-                console.log("✅ Plano extraído do valor:", plan);
+                console.log("✅ Plano extraído do valor da transação:", plan);
             }
-            
+
             if (!email) {
-                console.log("❌ Não foi possível extrair o email do pagamento");
-                console.log("📦 Dados disponíveis:", {
-                    external_reference: payment.external_reference,
-                    metadata: payment.metadata,
-                    payer_email: payment.payer?.email
-                });
+                console.log("❌ Email não encontrado em nenhuma fonte. Abortando.");
                 return res.status(200).end();
             }
-            
-            console.log("👤 Cliente:", email);
-            console.log("📦 Plano:", plan);
-            console.log("💳 Método:", payment.payment_method_id === 'pix' ? 'PIX' : 'Cartão');
-            
+
+            console.log(`👤 Cliente: ${email}`);
+            console.log(`📦 Plano: ${plan}`);
+
             await processarPagamentoAprovado(email, plan, paymentId);
-            
-            await supabase
-                .from("pagamentos_processados")
-                .update({ email: email })
-                .eq("id", String(paymentId));
-            
+
             console.log("🎉 Pagamento processado com sucesso!");
             return res.status(200).json({ sucesso: true });
         }
-        
-        // ================= PROCESSAR MERCHANT_ORDER =================
-        if (topic === "merchant_order" || type === "merchant_order") {
-            console.log("📦 Processando merchant_order...");
-            
-            const resourceUrl = req.body?.resource;
-            const merchantOrderId = resourceUrl?.split('/').pop() || req.body?.id;
-            
-            if (!merchantOrderId) {
-                console.log("❌ merchantOrderId não encontrado");
-                return res.status(200).end();
-            }
-            
-            try {
-                const response = await fetch(`https://api.mercadopago.com/merchant_orders/${merchantOrderId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`
-                    }
-                });
-                const merchantOrder = await response.json();
-                
-                if (merchantOrder.status !== 'closed') {
-                    console.log("⏳ Merchant order não fechado");
-                    return res.status(200).end();
-                }
-                
-                let email = merchantOrder?.payer?.email;
-                
-                if (!email) {
-                    console.log("❌ Email não encontrado");
-                    return res.status(200).end();
-                }
-                
-                const valor = merchantOrder?.total_amount || 0;
-                const plan = extrairPlanoDoValor(valor);
-                
-                console.log(`✅ Merchant order processado para ${email} | Plano: ${plan}`);
-                
-                await processarPagamentoAprovado(email, plan, null, merchantOrderId);
-                
-                console.log("🎉 Merchant order processado com sucesso");
-                return res.status(200).json({ sucesso: true });
-                
-            } catch (err) {
-                console.error("❌ Erro ao processar merchant_order:", err);
-                return res.status(200).end();
-            }
-        }
-        
-        console.log("⛔ Evento ignorado");
+
+        console.log("⛔ Evento ignorado:", { action, type, topic });
         return res.status(200).end();
-        
+
     } catch (err) {
         console.error("🔥 Erro no webhook:", err);
         return res.status(200).end();
