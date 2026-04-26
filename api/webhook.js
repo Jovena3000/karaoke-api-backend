@@ -1,4 +1,4 @@
-// webhook.js - VERSÃO CORRIGIDA v3 - FUNCIONAL
+// webhook.js - VERSÃO DEFINITIVA COMPLETA v4
 const mercadopago = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
@@ -18,14 +18,18 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ===== FUNÇÃO AUXILIAR PARA CRIAR TABELA DE LOG =====
 async function ensureTableExists() {
-    const { error } = await supabase
-        .from('pagamentos_processados')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-    
-    if (error && error.message.includes('does not exist')) {
-        console.log('📦 Tabela pagamentos_processados não existe. Continuando sem lock.');
+    try {
+        const { error } = await supabase
+            .from('pagamentos_processados')
+            .select('id')
+            .limit(1)
+            .maybeSingle();
+        
+        if (error && error.message.includes('does not exist')) {
+            console.log('📦 Tabela pagamentos_processados não existe. Continuando sem lock.');
+        }
+    } catch (error) {
+        console.log('⚠️ Erro ao verificar tabela:', error.message);
     }
     return true;
 }
@@ -36,7 +40,8 @@ function configurarCORS(req, res) {
         'https://karaokemultiplayer.com.br',
         'https://www.karaokemultiplayer.com.br',
         'https://karaoke-multiplayer.pages.dev',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        'http://localhost:8080'
     ];
     
     const origin = req.headers.origin;
@@ -73,22 +78,49 @@ function emailEhValido(email) {
     if (typeof email !== 'string') return false;
     if (email === 'undefined' || email === 'null') return false;
     if (email.trim() === '') return false;
-    if (!email.includes('@')) return false;
-
-    // Rejeita e-mails gerados automaticamente pelo Mercado Pago
-    const emailsFakes = [
-        'testuser', 'test_user', 'noreply', 'no-reply', 
-        '@mercadopago', '@mercadolivre', 'payment@mercadopago',
-        'payment.mercadopago', 'email@email.com'
-    ];
-    if (emailsFakes.some(str => email.toLowerCase().includes(str))) {
-        console.warn("⚠️ E-mail parece ser gerado automaticamente pelo MP:", email);
+    
+    // Se o email está mascarado pelo MP, tentamos extrair do payment original
+    if (email === 'XXXXXXXXXXX' || email.includes('XXX')) {
+        console.log("⚠️ Email está mascarado:", email);
         return false;
     }
-
+    
+    // Verifica se tem @ e formato básico
+    if (!email.includes('@')) return false;
+    
     // Valida formato básico com regex
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return regex.test(email.trim());
+}
+
+// ================= FUNÇÃO PARA BUSCAR EMAIL DIRETO DA API =================
+async function buscarEmailDiretoDoMP(paymentId) {
+    try {
+        console.log(`🔍 Buscando email diretamente do MP para payment ${paymentId}...`);
+        
+        // Método alternativo: buscar via fetch direto na API do MP
+        const accessToken = process.env.MP_ACCESS_TOKEN;
+        const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        
+        const payment = await response.json();
+        console.log("📡 Resposta direta da API MP:", JSON.stringify({
+            id: payment.id,
+            status: payment.status,
+            payer_email: payment.payer?.email,
+            external_reference: payment.external_reference
+        }, null, 2));
+        
+        // Retorna o email bruto da API
+        return payment.payer?.email || null;
+        
+    } catch (error) {
+        console.error("❌ Erro ao buscar email direto do MP:", error.message);
+        return null;
+    }
 }
 
 // ================= FUNÇÃO PRINCIPAL DE PROCESSAMENTO =================
@@ -96,44 +128,14 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, payment
     console.log(`💰 Processando pagamento para ${email}`);
     console.log(`📦 Plano: ${plan}`);
 
-    // 🔥 VALIDAÇÃO ROBUSTA DO E-MAIL
-    if (!emailEhValido(email)) {
-        console.error("❌ E-mail inválido recebido:", email);
-
-        // Tenta recuperar do paymentData
-        if (paymentData && paymentData.payer?.email) {
-            const emailRecuperado = paymentData.payer.email;
-            if (emailEhValido(emailRecuperado)) {
-                email = emailRecuperado;
-                console.log("✅ Email recuperado do paymentData:", email);
-            }
-        }
-        
-        // Tenta buscar do pagamento pelo ID
-        if (!emailEhValido(email) && paymentId) {
-            try {
-                const response = await mercadopago.payment.findById(paymentId);
-                const payment = response.body;
-                const emailRecuperado = payment.payer?.email;
-
-                if (emailEhValido(emailRecuperado)) {
-                    email = emailRecuperado;
-                    console.log("✅ Email recuperado do pagamento via API:", email);
-                }
-            } catch (err) {
-                console.error("❌ Não foi possível recuperar email do pagamento:", err.message);
-            }
-        }
-
-        if (!emailEhValido(email)) {
-            console.error("❌ Abortando: nenhum e-mail válido encontrado.");
-            return { sucesso: false, erro: "E-mail inválido" };
-        }
+    if (!email || email === 'XXXXXXXXXXX') {
+        console.error("❌ Email inválido:", email);
+        return { sucesso: false, erro: "E-mail inválido" };
     }
 
     // Limpar e normalizar email
     email = email.trim().toLowerCase();
-    console.log("📧 Email validado e normalizado:", email);
+    console.log("📧 Email normalizado:", email);
 
     // Definir dias do plano
     let diasPlano = 30;
@@ -276,7 +278,7 @@ async function processarPagamentoAprovado(email, plan, paymentId = null, payment
 
 // ================= WEBHOOK PRINCIPAL =================
 module.exports = async (req, res) => {
-    console.log("🚀 WEBHOOK FINAL ATIVO v3");
+    console.log("🚀 WEBHOOK FINAL ATIVO v4");
     console.log("📝 Method:", req.method);
     console.log("📝 Origin:", req.headers.origin);
 
@@ -287,10 +289,10 @@ module.exports = async (req, res) => {
     }
 
     try {
-        console.log("📩 Webhook recebido");
-        console.log("BODY:", JSON.stringify(req.body, null, 2));
-
         const body = req.body;
+        console.log("📩 Webhook recebido");
+        console.log("BODY:", JSON.stringify(body, null, 2));
+
         const action = body?.action;
         const type = body?.type;
         const topic = body?.topic;
@@ -314,7 +316,17 @@ module.exports = async (req, res) => {
 
             await ensureTableExists();
 
-            // Buscar pagamento com retentativas
+            // 🔥 BUSCAR EMAIL DIRETO DA API DO MERCADO PAGO
+            const emailReal = await buscarEmailDiretoDoMP(paymentId);
+            
+            if (!emailReal || emailReal === 'XXXXXXXXXXX') {
+                console.error("❌ Não foi possível obter o email real do pagamento");
+                return res.status(200).json({ received: true, error: "Email not found" });
+            }
+
+            console.log(`✅ Email real obtido: ${emailReal}`);
+
+            // Buscar detalhes do pagamento com retentativas
             let payment = null;
 
             for (let i = 0; i < 5; i++) {
@@ -337,17 +349,8 @@ module.exports = async (req, res) => {
                 return res.status(200).json({ received: true });
             }
 
-            // 🔍 LOG COMPLETO DO PAGAMENTO
-            console.log("🔍 PAYMENT DEBUG:", JSON.stringify({
-                id: payment.id,
-                status: payment.status,
-                transaction_amount: payment.transaction_amount,
-                payer_email: payment.payer?.email,
-                external_reference: payment.external_reference,
-                metadata: payment.metadata
-            }, null, 2));
-
             console.log("💳 Status pagamento:", payment.status);
+            console.log("💰 Valor:", payment.transaction_amount);
 
             if (payment.status !== "approved") {
                 console.log("⏳ Pagamento não aprovado. Status:", payment.status);
@@ -356,58 +359,12 @@ module.exports = async (req, res) => {
 
             console.log("✅ Pagamento aprovado!");
 
-            // ========== EXTRAIR EMAIL ==========
-            let email = null;
-            let plan = null;
-
-            // 1️⃣ Tentar do payer.email (MAIS CONFIÁVEL)
-            if (payment.payer?.email && emailEhValido(payment.payer.email)) {
-                email = payment.payer.email;
-                console.log("✅ [1] Email encontrado no payer.email:", email);
-            }
-
-            // 2️⃣ Tentar do external_reference
-            if (!email && payment.external_reference && emailEhValido(payment.external_reference)) {
-                email = payment.external_reference;
-                console.log("✅ [2] Email encontrado no external_reference:", email);
-            }
-
-            // 3️⃣ Tentar do metadata
-            if (!email && payment.metadata?.email && emailEhValido(payment.metadata.email)) {
-                email = payment.metadata.email;
-                plan = plan || payment.metadata.plan;
-                console.log("✅ [3] Email encontrado no metadata:", email);
-            }
-
-            // 4️⃣ Tentar do description (último recurso)
-            if (!email && payment.description) {
-                const emailMatch = payment.description.match(/[\w\.-]+@[\w\.-]+\.\w+/);
-                if (emailMatch && emailEhValido(emailMatch[0])) {
-                    email = emailMatch[0];
-                    console.log("✅ [4] Email encontrado na description:", email);
-                }
-            }
-
             // Extrair plano
-            if (!plan) {
-                plan = extrairPlanoDoValor(payment.transaction_amount);
-                console.log("✅ Plano extraído do valor:", plan);
-            }
-
-            if (!email) {
-                console.error("❌ Email não encontrado em nenhuma fonte. Payment:", {
-                    payer_email: payment.payer?.email,
-                    external_reference: payment.external_reference,
-                    metadata: payment.metadata
-                });
-                return res.status(200).json({ received: true, error: "Email not found" });
-            }
-
-            console.log(`👤 Cliente: ${email}`);
-            console.log(`📦 Plano: ${plan}`);
+            const plan = extrairPlanoDoValor(payment.transaction_amount);
+            console.log(`✅ Plano: ${plan}`);
 
             // Processar o pagamento
-            await processarPagamentoAprovado(email, plan, paymentId, payment);
+            await processarPagamentoAprovado(emailReal, plan, paymentId, payment);
 
             console.log("🎉 Pagamento processado com sucesso!");
             return res.status(200).json({ sucesso: true });
