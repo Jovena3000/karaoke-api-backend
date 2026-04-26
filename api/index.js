@@ -183,29 +183,6 @@ app.get('/api/auth/me', async (req, res) => {
     }
 });
 
-// ================= VERIFICAR PAGAMENTO PIX =================
-// ✅ Esta rota é chamada pelo checkout-bricks.html para checar se o PIX foi pago
-app.get('/api/verificar-pagamento', async (req, res) => {
-    try {
-        const { id } = req.query;
-        if (!id) return res.status(400).json({ erro: 'ID não informado' });
-
-        const mercadopago = require('mercadopago');
-        mercadopago.configure({ access_token: process.env.MP_ACCESS_TOKEN });
-
-        const response = await mercadopago.payment.findById(id);
-        const payment  = response.body;
-
-        res.json({
-            id:     payment.id,
-            status: payment.status
-        });
-    } catch (error) {
-        console.error('❌ Erro ao verificar pagamento:', error);
-        res.status(500).json({ erro: 'Erro ao verificar pagamento' });
-    }
-});
-
 // ================= ROOT =================
 app.get('/', (req, res) => {
     res.json({
