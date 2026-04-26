@@ -75,58 +75,55 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ================= CARTÃO =================
-        if (metodo === 'card') {
-            console.log('💳 Processando cartão...');
+           // ================= CARTÃO =================
+if (metodo === 'card') {
+    console.log('💳 Processando cartão...');
 
-            if (!token) {
-                return res.status(400).json({
-                    sucesso: false,
-                    erro: 'Token do cartão não enviado'
-                });
+    const { token, payment_method_id, issuer_id, installments = 1 } = req.body;
+
+    if (!token) {
+        return res.status(400).json({ sucesso: false, erro: 'Token do cartão não enviado' });
+    }
+
+    // 🔥 VALIDAÇÃO DO payment_method_id
+    if (!payment_method_id) {
+        console.error("⚠️ payment_method_id não enviado pelo frontend!");
+        return res.status(400).json({ sucesso: false, erro: 'Método de pagamento não identificado' });
+    }
+
+    const paymentData = {
+        transaction_amount: Number(valor),
+        token: token,
+        description: descricao,
+        installments: Number(installments),
+        payment_method_id: payment_method_id,  // ← ESSENCIAL!
+        issuer_id: issuer_id || undefined,
+        payer: { 
+            email: email,
+            identification: {
+                type: 'CPF',
+                number: '19119119100'
             }
+        },
+        notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+        external_reference: `${email}|${plan}`,
+        metadata: { email, plan }
+    };
 
-            // ✅ CORRIGIDO: usa o payment_method_id real vindo do frontend
-            if (!payment_method_id) {
-                console.warn('⚠️ payment_method_id não enviado pelo frontend!');
-            }
+    console.log('📤 Enviando pagamento para MP...', { payment_method_id, issuer_id });
 
-            const paymentData = {
-                transaction_amount: Number(valor),
-                token: token,
-                description: descricao,
-                installments: 1,
-                payment_method_id: payment_method_id || 'master', // usa o real, fallback para master
-                payer: {
-                    email: email,
-                    identification: {
-                        type: 'CPF',
-                        // ✅ CORRIGIDO: usa o CPF do cliente se enviado, senão usa fallback
-                        number: cpf || '19119119100'
-                    }
-                },
-                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-                external_reference: `${email}|${plan}`,
-                metadata: { email, plan }
-            };
+    const response = await mercadopago.payment.create(paymentData);
+    const payment = response.body;
 
-            console.log('📤 Enviando pagamento para MP...');
-            console.log('💳 Método:', paymentData.payment_method_id);
+    console.log('💳 Status:', payment.status);
 
-            const response = await mercadopago.payment.create(paymentData);
-            const payment = response.body;
-
-            console.log('💳 Status:', payment.status);
-            console.log('💳 ID:', payment.id);
-
-            return res.status(200).json({
-                sucesso: payment.status === 'approved',
-                status: payment.status,
-                id: payment.id,
-                mensagem: payment.status === 'approved' ? 'Pagamento aprovado!' : 'Pagamento pendente'
-            });
-        }
-
+    return res.status(200).json({
+        sucesso: payment.status === 'approved',
+        status: payment.status,
+        id: payment.id
+    });
+}
+        
         return res.status(400).json({
             sucesso: false,
             erro: 'Método de pagamento inválido. Use "pix" ou "card".'
