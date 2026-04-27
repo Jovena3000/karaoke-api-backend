@@ -1,3 +1,12 @@
+// api/criar-pagamento.js
+const mercadopago = require('mercadopago');
+
+// 🔥 COLE SUA TOKEN REAL AQUI
+const MINHA_TOKEN = 'APP_USR-2385096665734797-021814-9a11c38f6752e996371ba1955701fee7-9710270';
+
+mercadopago.configure({
+    access_token: MINHA_TOKEN  // ← Use a token fixa
+});
 // api/criar-pagamento.js - VERSÃO 1.5.15
 const mercadopago = require('mercadopago');
 
