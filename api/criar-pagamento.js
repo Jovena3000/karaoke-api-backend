@@ -1,45 +1,32 @@
 // api/criar-pagamento.js
-// 🔥 COLE SUA TOKEN REAL AQUI
+const mercadopago = require('mercadopago');
+
 const MINHA_TOKEN = 'APP_USR-2385096665734797-021814-9a11c38f6752e996371ba1955701fee7-9710270';
 
 mercadopago.configure({
     access_token: MINHA_TOKEN  // ← Use a token fixa
 });
-// api/criar-pagamento.js - VERSÃO 1.5.15
-const mercadopago = require('mercadopago');
-
-mercadopago.configure({
-    access_token: process.env.MP_ACCESS_TOKEN
-});
 
 module.exports = async (req, res) => {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
 
-    console.log("🚀 CREATE PAYMENT v1.5.15");
+    console.log("🚀 CREATE PAYMENT");
 
     if (req.method !== 'POST') {
         return res.status(405).json({ erro: 'Método não permitido' });
     }
 
     try {
-        const { plan, email, metodo, token, payment_method_id, cpf } = req.body;
+        const { plan, email, metodo, token, payment_method_id, installments = 1 } = req.body;
 
         console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌', payment_method_id });
-
-        // Validação básica
-        if (!email || !email.includes('@')) {
-            return res.status(400).json({ sucesso: false, erro: 'E-mail inválido' });
-        }
-        if (!plan) {
-            return res.status(400).json({ sucesso: false, erro: 'Plano não informado' });
-        }
 
         const precos = {
             mensal: 5.00,
@@ -48,17 +35,12 @@ module.exports = async (req, res) => {
             anual: 159.90
         };
 
-        const valor = precos[plan];
-        if (!valor) {
-            return res.status(400).json({ sucesso: false, erro: 'Plano inválido' });
-        }
-
+        const valor = precos[plan] || 49.90;
         const descricao = `Plano ${plan} - Karaokê Multiplayer`;
 
-        // ================= PIX =================
+        // PIX
         if (metodo === 'pix') {
             console.log('📱 Criando PIX...');
-
             const payment = await mercadopago.payment.create({
                 transaction_amount: valor,
                 description: descricao,
@@ -68,11 +50,7 @@ module.exports = async (req, res) => {
                 external_reference: `${email}|${plan}`,
                 metadata: { email, plan }
             });
-
             const data = payment.body;
-
-            console.log('✅ PIX criado! ID:', data.id);
-
             return res.status(200).json({
                 sucesso: true,
                 metodo: 'pix',
@@ -82,68 +60,58 @@ module.exports = async (req, res) => {
             });
         }
 
-           // ================= CARTÃO =================
-if (metodo === 'card') {
-    console.log('💳 Processando cartão...');
+        // CARTÃO
+        if (metodo === 'card') {
+            console.log('💳 Processando cartão...');
 
-    const { token, payment_method_id, issuer_id, installments = 1 } = req.body;
-
-    if (!token) {
-        return res.status(400).json({ sucesso: false, erro: 'Token do cartão não enviado' });
-    }
-
-    // 🔥 VALIDAÇÃO DO payment_method_id
-    if (!payment_method_id) {
-        console.error("⚠️ payment_method_id não enviado pelo frontend!");
-        return res.status(400).json({ sucesso: false, erro: 'Método de pagamento não identificado' });
-    }
-
-    const paymentData = {
-        transaction_amount: Number(valor),
-        token: token,
-        description: descricao,
-        installments: Number(installments),
-        payment_method_id: payment_method_id,  // ← ESSENCIAL!
-        issuer_id: issuer_id || undefined,
-        payer: { 
-            email: email,
-            identification: {
-                type: 'CPF',
-                number: '19119119100'
+            if (!token) {
+                return res.status(400).json({ sucesso: false, erro: 'Token do cartão não enviado' });
             }
-        },
-        notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
-        external_reference: `${email}|${plan}`,
-        metadata: { email, plan }
-    };
 
-    console.log('📤 Enviando pagamento para MP...', { payment_method_id, issuer_id });
+            if (!payment_method_id) {
+                console.error("⚠️ payment_method_id não enviado pelo frontend!");
+                return res.status(400).json({ sucesso: false, erro: 'Método de pagamento não identificado' });
+            }
 
-    const response = await mercadopago.payment.create(paymentData);
-    const payment = response.body;
+            const paymentData = {
+                transaction_amount: Number(valor),
+                token: token,
+                description: descricao,
+                installments: Number(installments),
+                payment_method_id: payment_method_id,
+                payer: { 
+                    email: email,
+                    identification: {
+                        type: 'CPF',
+                        number: '19119119100'
+                    }
+                },
+                notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
+                external_reference: `${email}|${plan}`,
+                metadata: { email, plan }
+            };
 
-    console.log('💳 Status:', payment.status);
+            console.log('📤 Enviando pagamento para MP...');
+            const response = await mercadopago.payment.create(paymentData);
+            const payment = response.body;
 
-    return res.status(200).json({
-        sucesso: payment.status === 'approved',
-        status: payment.status,
-        id: payment.id
-    });
-}
-        
-        return res.status(400).json({
-            sucesso: false,
-            erro: 'Método de pagamento inválido. Use "pix" ou "card".'
-        });
+            console.log('💳 Status:', payment.status);
+            console.log('💳 ID:', payment.id);
+
+            return res.status(200).json({
+                sucesso: payment.status === 'approved',
+                status: payment.status,
+                id: payment.id
+            });
+        }
+
+        return res.status(400).json({ sucesso: false, erro: 'Método de pagamento inválido' });
 
     } catch (error) {
         console.error('❌ ERRO:', error.message);
         if (error.response?.data) {
-            console.error('📦 Detalhes MP:', JSON.stringify(error.response.data, null, 2));
+            console.error('📦 Detalhes:', JSON.stringify(error.response.data, null, 2));
         }
-        return res.status(500).json({
-            sucesso: false,
-            erro: error.message || 'Erro interno do servidor'
-        });
+        return res.status(500).json({ sucesso: false, erro: error.message || 'Erro interno' });
     }
 };
