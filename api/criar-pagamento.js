@@ -18,6 +18,7 @@ module.exports = async (req, res) => {
     }
 
     console.log("🚀 CREATE PAYMENT");
+    console.log("TOKEN CRIAR:", process.env.MP_ACCESS_TOKEN);
 
     if (req.method !== 'POST') {
         return res.status(405).json({ erro: 'Método não permitido' });
