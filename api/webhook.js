@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
 const { createClient } = require('@supabase/supabase-js');
 
+console.log("TOKEN WEBHOOK:", process.env.MP_ACCESS_TOKEN);
+
 // ===== CONFIG =====
 mercadopago.configure({
     access_token: process.env.MP_ACCESS_TOKEN
