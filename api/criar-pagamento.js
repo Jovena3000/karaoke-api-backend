@@ -30,7 +30,7 @@ module.exports = async (req, res) => {
         console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌', payment_method_id });
 
         const precos = {
-            mensal: 5.00,
+            mensal: 10.00,
             trimestral: 49.90,
             semestral: 89.90,
             anual: 159.90
