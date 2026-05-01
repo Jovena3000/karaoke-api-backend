@@ -173,30 +173,71 @@ async function processarPagamentoAprovado(email, plan, paymentId = null) {
     console.log(`🔑 Senha: ${senhaTemporaria}`);
     console.log(`📅 Expira em: ${dataExpiracaoStr}`);
 
-    // ================= ENVIAR E-MAIL =================
-    try {
-        console.log("📧 Enviando e-mail para:", email);
+      // ================= ENVIAR E-MAIL =================
+try {
+    console.log("📧 Enviando e-mail para:", email);
 
-        const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
-        const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
+    const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
+    const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
 
-        await resend.emails.send({
-            from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
-            to: email,
-            subject: "✅ Pagamento Confirmado - Acesso Liberado!",
-            html: `
-            <div style="font-family: Arial; max-width: 600px; margin: 0 auto;">
-                <h2>🎤 Pagamento Confirmado!</h2>
-                <p>Olá ${email.split('@')[0]}!</p>
-                <p>Seu pagamento foi <strong>APROVADO</strong>!</p>
-                <p><strong>Plano:</strong> ${planoCapitalizado}</p>
-                <p><strong>Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
-                <p><strong>Expira em:</strong> ${dataFormatada}</p>
-                <p><strong>Sua senha:</strong> <code style="background:#f0f0f0;padding:5px;">${senhaTemporaria}</code></p>
-                <a href="https://karaokemultiplayer.com.br/login.html">Acessar</a>
+    await resend.emails.send({
+        from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
+        to: email,
+        subject: "✅ Pagamento Confirmado - Acesso Liberado!",
+        html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
+            .credential-box { background: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center; }
+            .senha { font-size: 28px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: monospace; }
+            .button { background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; font-weight: bold; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🎤 Pagamento Confirmado!</h1>
+              <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
             </div>
-            `
-        });
+            
+            <div class="content">
+              <h2>Olá ${email.split('@')[0]}!</h2>
+              <p>Recebemos a confirmação do seu pagamento com sucesso. Aqui estão os detalhes da sua compra:</p>
+              
+              <p><strong>📋 Plano:</strong> ${planoCapitalizado}</p>
+              <p><strong>💰 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
+              <p><strong>📅 Expira em:</strong> ${dataFormatada}</p>
+              
+              <div class="credential-box">
+                <h3 style="margin-top: 0;">🔑 SUAS CREDENCIAIS DE ACESSO</h3>
+                <p><strong>E-mail:</strong> ${email}</p>
+                <p><strong>Senha temporária:</strong></p>
+                <div class="senha">${senhaTemporaria}</div>
+                <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
+              </div>
+              
+              <div style="text-align: center;">
+                <a href="https://karaokemultiplayer.com.br/login.html" class="button">ACESSAR KARAOKÊ</a>
+              </div>
+              
+              <p style="margin-top: 20px;">Qualquer dúvida, responda a este e-mail ou entre em contato com nosso suporte.</p>
+            </div>
+            
+            <div class="footer">
+              <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+        `
+    });
 
         console.log("✅ Email enviado com sucesso!");
 
