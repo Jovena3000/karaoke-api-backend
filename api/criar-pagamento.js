@@ -25,7 +25,8 @@ module.exports = async (req, res) => {
     }
 
     try {
-        const { plan, email, metodo, token, payment_method_id, installments = 1 } = req.body;
+        // ✅ FIX CPF: inclui 'cpf' no destructuring para ler o valor real enviado pelo frontend
+        const { plan, email, metodo, token, payment_method_id, installments = 1, cpf } = req.body;
 
         console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌', payment_method_id });
 
@@ -74,6 +75,10 @@ module.exports = async (req, res) => {
                 return res.status(400).json({ sucesso: false, erro: 'Método de pagamento não identificado' });
             }
 
+            // ✅ FIX CPF: usa o CPF real enviado pelo frontend (já limpo, só dígitos)
+            //    Remove qualquer caractere não-numérico por segurança no backend também
+            const cpfLimpo = cpf ? String(cpf).replace(/\D/g, '') : null;
+
             const paymentData = {
                 transaction_amount: Number(valor),
                 token: token,
@@ -82,10 +87,13 @@ module.exports = async (req, res) => {
                 payment_method_id: payment_method_id,
                 payer: { 
                     email: email,
-                    identification: {
-                        type: 'CPF',
-                        number: '19119119100'
-                    }
+                    // ✅ FIX CPF: inclui identification apenas se o CPF foi enviado e tem 11 dígitos
+                    ...(cpfLimpo && cpfLimpo.length === 11 && {
+                        identification: {
+                            type: 'CPF',
+                            number: cpfLimpo
+                        }
+                    })
                 },
                 notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
                 external_reference: `${email}|${plan}`,
@@ -93,6 +101,8 @@ module.exports = async (req, res) => {
             };
 
             console.log('📤 Enviando pagamento para MP...');
+            console.log('👤 CPF recebido:', cpfLimpo ? `${cpfLimpo.substring(0, 3)}.***.***-${cpfLimpo.slice(-2)}` : '❌ não enviado');
+
             const response = await mercadopago.payment.create(paymentData);
             const payment = response.body;
 
