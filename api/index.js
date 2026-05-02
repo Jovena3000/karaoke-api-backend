@@ -184,6 +184,13 @@ app.post('/api/criar-pagamento', async (req, res) => {
         return res.status(400).json({ sucesso: false, erro: 'Token não enviado' });
       }
 
+      // ✅ FIX CPF: remove não-dígitos e valida 11 dígitos antes de usar
+      //    Remove o fallback '19119119100' — não envia CPF falso se vier vazio
+      const cpfLimpo = cpf ? String(cpf).replace(/\D/g, '') : null;
+      console.log('👤 CPF recebido:', cpfLimpo
+        ? `${cpfLimpo.substring(0, 3)}.***.***-${cpfLimpo.slice(-2)}`
+        : '❌ não enviado');
+
       const paymentData = {
         transaction_amount: Number(valor),
         token: token,
@@ -192,10 +199,14 @@ app.post('/api/criar-pagamento', async (req, res) => {
         payment_method_id: payment_method_id || 'master',
         payer: {
           email: email,
-          identification: {
-            type: 'CPF',
-            number: cpf ? cpf.replace(/\D/g, '') : '19119119100'
-          }
+          // ✅ FIX CPF: inclui identification apenas se CPF real com 11 dígitos
+          //    Sem fallback — se não veio, não envia o campo (MP aceita sem CPF)
+          ...(cpfLimpo && cpfLimpo.length === 11 && {
+            identification: {
+              type: 'CPF',
+              number: cpfLimpo
+            }
+          })
         },
         notification_url: 'https://karaoke-api-backend3.vercel.app/api/webhook',
         external_reference: `${email}|${plan}`
