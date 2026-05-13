@@ -1,5 +1,7 @@
 // api/criar-pagamento.js
 const mercadopago = require('mercadopago');
+// ✅ CORRETO - Pega o token das variáveis de ambiente
+const MINHA_TOKEN = process.env.MP_ACCESS_TOKEN;
 
 mercadopago.configure({
     access_token: MINHA_TOKEN  // ← Use a token fixa
