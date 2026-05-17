@@ -31,13 +31,13 @@ module.exports = async (req, res) => {
         console.log('📩 Dados:', { email, plan, metodo, token: token ? '✅' : '❌', payment_method_id });
 
         const precos = {
-            mensal: 10.00,
-            trimestral: 49.90,
-            semestral: 89.90,
+            mensal: 34.90,
+            trimestral: 59.90,
+            semestral: 99.90,
             anual: 159.90
         };
 
-        const valor = precos[plan] || 49.90;
+        const valor = precos[plan] || 59.90;
         const descricao = `Plano ${plan} - Karaokê Multiplayer`;
 
         // PIX
