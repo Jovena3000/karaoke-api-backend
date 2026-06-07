@@ -62,7 +62,7 @@ function configurarCORS(req, res) {
 // ================= FUNÇÃO PARA EXTRAIR PLANO DO VALOR =================
 function extrairPlanoDoValor(valor) {
     if (valor === 34.90 || valor === 34.9) return "mensal";
-    if (valor === 59.90 || valor === 59.9) return "trimestral";
+    if (valor === 49.90 || valor === 49.9) return "trimestral";
     if (valor === 99.90 || valor === 99.9) return "semestral";
     if (valor === 159.90 || valor === 159.9) return "anual";
     return "trimestral";
@@ -123,7 +123,7 @@ async function processarPagamentoAprovado(email, plan, paymentId = null) {
 
     let diasPlano = 30;
     let valorPlano = 34.90;
-    if (plan === "trimestral") { diasPlano = 90; valorPlano = 59.90; }
+    if (plan === "trimestral") { diasPlano = 90; valorPlano = 49.90; }
     if (plan === "semestral") { diasPlano = 180; valorPlano = 99.90; }
     if (plan === "anual") { diasPlano = 365; valorPlano = 159.90; }
 
