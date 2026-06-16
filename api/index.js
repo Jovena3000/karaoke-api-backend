@@ -145,7 +145,7 @@ app.post('/api/criar-pagamento', async (req, res) => {
     }
 
     const precos = {
-      mensal: 34.90,
+      mensal: 14.90,
       trimestral: 59.90,
       semestral: 99.90,
       anual: 159.90
