@@ -14,12 +14,12 @@ const pool = new Pool({
 });
 
 // Configuração do e-mail (já testada e funcionando)
-const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransporter({
   service: "gmail",
   auth: {
-  user: process.env.EMAIL_USER,
-  pass: process.env.EMAIL_PASS
-}
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
 });
 
 async function aprovarPagamento(dados) {
@@ -79,6 +79,7 @@ async function aprovarPagamento(dados) {
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
             .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+            .header img { max-width: 180px; margin-bottom: 10px; }
             .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
             .credential-box { background: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center; }
             .senha { font-size: 28px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: monospace; }
@@ -89,6 +90,8 @@ async function aprovarPagamento(dados) {
         <body>
           <div class="container">
             <div class="header">
+              <!-- LOGO DA EMPRESA ADICIONADO AQUI -->
+              <img src="https://uploads.onecompiler.io/43v37pq3s/1783903529895/karaokeM01%20(1).png" alt="Karaokê Multiplayer">
               <h1>🎤 Pagamento Confirmado!</h1>
               <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
             </div>
