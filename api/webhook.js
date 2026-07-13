@@ -203,6 +203,8 @@ try {
         <body>
           <div class="container">
             <div class="header">
+            <!-- LOGO DA EMPRESA ADICIONADO AQUI -->
+              <img src="https://uploads.onecompiler.io/43v37pq3s/1783903529895/karaokeM01%20(1).png" alt="Karaokê Multiplayer">
               <h1>🎤 Pagamento Confirmado!</h1>
               <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
             </div>
