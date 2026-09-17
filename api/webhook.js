@@ -1,10 +1,10 @@
-// webhook.js - VERSÃO COMPLETA E CORRIGIDA
+// webhook.js - VERSÃO COMPLETA, CORRIGIDA E OTIMIZADA
 const mercadopago = require('mercadopago');
 const bcrypt = require('bcryptjs');
 const { Resend } = require('resend');
 const { createClient } = require('@supabase/supabase-js');
 
-console.log("TOKEN WEBHOOK:", process.env.MP_ACCESS_TOKEN);
+console.log("TOKEN WEBHOOK:", process.env.MP_ACCESS_TOKEN ? "Configurado" : "❌ FALTANDO");
 
 // ===== CONFIG =====
 mercadopago.configure({
@@ -88,8 +88,7 @@ function emailEhValido(email) {
 
 // ================= FUNÇÃO PRINCIPAL DE PROCESSAMENTO =================
 async function processarPagamentoAprovado(email, plan, paymentId = null) {
-    console.log(`💰 Processando pagamento para ${email}`);
-    console.log(`📦 Plano: ${plan}`);
+    console.log(`💳 Processando pagamento para ${email}`);
 
     // 🔥 VALIDAÇÃO ROBUSTA DO E-MAIL
     if (!emailEhValido(email)) {
@@ -121,18 +120,12 @@ async function processarPagamentoAprovado(email, plan, paymentId = null) {
     email = email.trim().toLowerCase();
     console.log("📧 Email validado e normalizado:", email);
 
+    // Configuração dos planos
     let diasPlano = 30;
     let valorPlano = 21.90;
     if (plan === "trimestral") { diasPlano = 90; valorPlano = 59.90; }
     if (plan === "semestral") { diasPlano = 180; valorPlano = 99.90; }
     if (plan === "anual") { diasPlano = 365; valorPlano = 159.90; }
-
-    const senhaTemporaria = Math.random().toString(36).slice(-8);
-    const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
-
-    const dataExpiracao = new Date();
-    dataExpiracao.setDate(dataExpiracao.getDate() + diasPlano);
-    const dataExpiracaoStr = dataExpiracao.toISOString().split('T')[0];
 
     const { data: usuarioExistente } = await supabase
         .from("usuarios")
@@ -140,26 +133,125 @@ async function processarPagamentoAprovado(email, plan, paymentId = null) {
         .eq("email", email)
         .maybeSingle();
 
+    let senhaTemporaria = null;
+    let dataExpiracaoFinal = new Date();
+
     if (usuarioExistente) {
-        console.log("🔄 Atualizando usuário existente");
+        // ================= USUÁRIO JÁ EXISTE (RENOVAÇÃO OU REATIVAÇÃO) =================
+        console.log("🔄 Atualizando usuário existente (Renovação/Reativação)");
+
+        // 1. Calcular a nova data de expiração somando os dias do plano
+        const hoje = new Date();
+        const dataExpiracaoAtual = new Date(usuarioExistente.data_expiracao);
+
+        // Se a data atual for maior que hoje (ainda tem saldo), somamos a partir dela.
+        // Se já venceu, somamos a partir de hoje.
+        if (dataExpiracaoAtual > hoje) {
+            dataExpiracaoFinal = new Date(dataExpiracaoAtual);
+            dataExpiracaoFinal.setDate(dataExpiracaoFinal.getDate() + diasPlano);
+        } else {
+            dataExpiracaoFinal.setDate(hoje.getDate() + diasPlano);
+        }
+        
+        const dataExpiracaoStr = dataExpiracaoFinal.toISOString().split('T')[0];
+
+        // 2. Atualizar o banco (SEM MEXER NA SENHA!)
         await supabase
             .from("usuarios")
             .update({
                 plano: plan,
                 status: "ativo",
                 data_expiracao: dataExpiracaoStr,
-                senha_hash: senhaHash,
                 ultimo_pagamento: new Date().toISOString(),
                 updated_at: new Date().toISOString()
+                // 🚨 NÃO ATUALIZAMOS A SENHA AQUI PARA NÃO QUEBRAR O ACESSO DO CLIENTE
             })
             .eq("email", email);
+
+        // 3. (OPCIONAL) Se você baniu o usuário na tabela auth.users do Supabase, descomente a linha abaixo:
+        // await supabase.auth.admin.updateUserById(usuarioExistente.auth_id, { ban_duration: 'none' });
+
+        console.log(`✅ Usuário ${email} reativado com plano ${plan} até ${dataExpiracaoStr}`);
+
+        // 4. Enviar e-mail de RENOVAÇÃO (Sem senha nova)
+        try {
+            console.log("📧 Enviando e-mail de renovação para:", email);
+            const dataFormatada = dataExpiracaoFinal.toLocaleDateString("pt-BR");
+            const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
+
+            await resend.emails.send({
+                from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
+                to: email,
+                subject: "✅ Renovação Confirmada - Acesso Liberado!",
+                html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                    .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
+                    .button { background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; font-weight: bold; }
+                    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="header">
+                      <img src="https://uploads.onecompiler.io/43v37pq3s/1783903529895/karaokeM01%20(1).png" alt="Karaokê Multiplayer">
+                      <h1>🎤 Renovação Confirmada!</h1>
+                      <p>Seu acesso ao Karaokê Multiplayer Premium foi renovado</p>
+                    </div>
+                    
+                    <div class="content">
+                      <h2>Olá ${email.split('@')[0]}!</h2>
+                      <p>Recebemos a confirmação do seu pagamento e sua assinatura foi renovada com sucesso.</p>
+                      
+                      <p><strong>📋 Plano:</strong> ${planoCapitalizado}</p>
+                      <p><strong>💳 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
+                      <p><strong>📅 Nova Data de Expiração:</strong> ${dataFormatada}</p>
+                      
+                      <p style="margin-top: 20px;">Você pode continuar usando suas credenciais de acesso atuais. Não é necessário trocar a senha.</p>
+                      
+                      <div style="text-align: center;">
+                        <a href="https://karaokemultiplayer.com.br/login.html" class="button">ACESSAR KARAOKÊ</a>
+                      </div>
+                      
+                      <p style="margin-top: 20px;">Qualquer dúvida, responda a este e-mail ou entre em contato com nosso suporte.</p>
+                    </div>
+                    
+                    <div class="footer">
+                      <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+                `
+            });
+            console.log("✉️ E-mail de renovação enviado com sucesso!");
+        } catch (erroEmail) {
+            console.error("❌ Erro ao enviar email de renovação:", erroEmail.message);
+        }
+
+        return { sucesso: true, email, plan, tipo: 'renovacao' };
+
     } else {
+        // ================= NOVO USUÁRIO (PRIMEIRA COMPRA) =================
         console.log("🆕 Criando novo usuário");
+        
+        senhaTemporaria = Math.random().toString(36).slice(-8);
+        const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
+        
+        dataExpiracaoFinal.setDate(dataExpiracaoFinal.getDate() + diasPlano);
+        const dataExpiracaoStr = dataExpiracaoFinal.toISOString().split('T')[0];
+
         await supabase
             .from("usuarios")
             .insert({
                 email,
-                senha_hash: senhaHash,
+                senha_hash: senhaHash, // Só cria senha para usuário NOVO
                 nome: email.split('@')[0],
                 plano: plan,
                 status: "ativo",
@@ -167,92 +259,90 @@ async function processarPagamentoAprovado(email, plan, paymentId = null) {
                 ultimo_pagamento: new Date().toISOString(),
                 created_at: new Date().toISOString()
             });
+
+        console.log(`✅ Novo usuário ${email} criado com plano ${plan}`);
+        console.log(`🔑 Senha: ${senhaTemporaria}`);
+        console.log(`📅 Expira em: ${dataExpiracaoStr}`);
+
+        // ================= ENVIAR E-MAIL DE BOAS-VINDAS =================
+        try {
+            console.log("📧 Enviando e-mail de boas-vindas para:", email);
+            const dataFormatada = dataExpiracaoFinal.toLocaleDateString("pt-BR");
+            const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
+
+            await resend.emails.send({
+                from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
+                to: email,
+                subject: "✅ Pagamento Confirmado - Acesso Liberado!",
+                html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                    .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
+                    .credential-box { background: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center; }
+                    .senha { font-size: 28px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: monospace; }
+                    .button { background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; font-weight: bold; }
+                    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="header">
+                      <img src="https://uploads.onecompiler.io/43v37pq3s/1783903529895/karaokeM01%20(1).png" alt="Karaokê Multiplayer">
+                      <h1>🎤 Pagamento Confirmado!</h1>
+                      <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
+                    </div>
+                    
+                    <div class="content">
+                      <h2>Olá ${email.split('@')[0]}!</h2>
+                      <p>Recebemos a confirmação do seu pagamento com sucesso. Aqui estão os detalhes da sua compra:</p>
+                      
+                      <p><strong>📋 Plano:</strong> ${planoCapitalizado}</p>
+                      <p><strong>💳 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
+                      <p><strong>📅 Expira em:</strong> ${dataFormatada}</p>
+                      
+                      <div class="credential-box">
+                        <h3 style="margin-top: 0;">🔑 SUAS CREDENCIAIS DE ACESSO</h3>
+                        <p><strong>E-mail:</strong> ${email}</p>
+                        <p><strong>Senha temporária:</strong></p>
+                        <div class="senha">${senhaTemporaria}</div>
+                        <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
+                      </div>
+                      
+                      <div style="text-align: center;">
+                        <a href="https://karaokemultiplayer.com.br/login.html" class="button">ACESSAR KARAOKÊ</a>
+                      </div>
+                      
+                      <p style="margin-top: 20px;">Qualquer dúvida, responda a este e-mail ou entre em contato com nosso suporte.</p>
+                    </div>
+                    
+                    <div class="footer">
+                      <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+                `
+            });
+
+            console.log("✉️ Email de boas-vindas enviado com sucesso!");
+
+        } catch (erroEmail) {
+            console.error("❌ Erro ao enviar email de boas-vindas:", erroEmail.message);
+        }
+
+        return { sucesso: true, email, plan, senha: senhaTemporaria, tipo: 'novo' };
     }
-
-    console.log(`✅ Usuário ${email} ativado com plano ${plan}`);
-    console.log(`🔑 Senha: ${senhaTemporaria}`);
-    console.log(`📅 Expira em: ${dataExpiracaoStr}`);
-
-      // ================= ENVIAR E-MAIL =================
-try {
-    console.log("📧 Enviando e-mail para:", email);
-
-    const dataFormatada = dataExpiracao.toLocaleDateString("pt-BR");
-    const planoCapitalizado = plan.charAt(0).toUpperCase() + plan.slice(1);
-
-    await resend.emails.send({
-        from: "Karaokê Multiplayer <noreply@karaokemultiplayer.com.br>",
-        to: email,
-        subject: "✅ Pagamento Confirmado - Acesso Liberado!",
-        html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-            .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px; }
-            .credential-box { background: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center; }
-            .senha { font-size: 28px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: monospace; }
-            .button { background: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0; font-weight: bold; }
-            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-            <!-- LOGO DA EMPRESA ADICIONADO AQUI -->
-              <img src="https://uploads.onecompiler.io/43v37pq3s/1783903529895/karaokeM01%20(1).png" alt="Karaokê Multiplayer">
-              <h1>🎤 Pagamento Confirmado!</h1>
-              <p>Seu acesso ao Karaokê Multiplayer Premium está liberado</p>
-            </div>
-            
-            <div class="content">
-              <h2>Olá ${email.split('@')[0]}!</h2>
-              <p>Recebemos a confirmação do seu pagamento com sucesso. Aqui estão os detalhes da sua compra:</p>
-              
-              <p><strong>📋 Plano:</strong> ${planoCapitalizado}</p>
-              <p><strong>💰 Valor:</strong> R$ ${valorPlano.toFixed(2).replace('.', ',')}</p>
-              <p><strong>📅 Expira em:</strong> ${dataFormatada}</p>
-              
-              <div class="credential-box">
-                <h3 style="margin-top: 0;">🔑 SUAS CREDENCIAIS DE ACESSO</h3>
-                <p><strong>E-mail:</strong> ${email}</p>
-                <p><strong>Senha temporária:</strong></p>
-                <div class="senha">${senhaTemporaria}</div>
-                <p style="color: #e67e22; margin-top: 15px;">⚠️ Recomendamos trocar sua senha após o primeiro acesso</p>
-              </div>
-              
-              <div style="text-align: center;">
-                <a href="https://karaokemultiplayer.com.br/login.html" class="button">ACESSAR KARAOKÊ</a>
-              </div>
-              
-              <p style="margin-top: 20px;">Qualquer dúvida, responda a este e-mail ou entre em contato com nosso suporte.</p>
-            </div>
-            
-            <div class="footer">
-              <p>© ${new Date().getFullYear()} Karaokê Multiplayer. Todos os direitos reservados.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-        `
-    });
-
-        console.log("✅ Email enviado com sucesso!");
-
-    } catch (erroEmail) {
-        console.error("❌ Erro ao enviar email:", erroEmail.message);
-    }
-
-    return { sucesso: true, email, plan, senha: senhaTemporaria };
 }
 
 // ================= WEBHOOK PRINCIPAL =================
 module.exports = async (req, res) => {
-    console.log("🚀 WEBHOOK FINAL ATIVO v2");
+    console.log("🚀 WEBHOOK FINAL ATIVO v3");
     console.log("📝 Method:", req.method);
     console.log("📝 Origin:", req.headers.origin);
 
@@ -308,7 +398,7 @@ module.exports = async (req, res) => {
                         break;
                     }
                 } catch (err) {
-                    console.log(`⏳ Tentativa ${i + 1} falhou:`, err.message);
+                    console.log(`⏱ Tentativa ${i + 1} falhou:`, err.message);
                 }
                 await new Promise(r => setTimeout(r, 2000));
             }
@@ -318,10 +408,10 @@ module.exports = async (req, res) => {
                 return res.status(200).end();
             }
 
-            console.log("💳 Status pagamento:", payment.status);
+            console.log("💰 Status pagamento:", payment.status);
 
             if (payment.status !== "approved") {
-                console.log("⏳ Pagamento não aprovado");
+                console.log("⏱ Pagamento não aprovado");
                 return res.status(200).end();
             }
 
