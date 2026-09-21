@@ -70,7 +70,7 @@ module.exports = async (req, res) => {
     // 3. Atualiza o último acesso
     await supabase
       .from('usuarios')
-      .update({ ultimo_acesso: new Date().toISOString() })
+      .update({ ultimo_acesso: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }) })
       .eq('id', userId);
 
     return res.json({ sucesso: true, mensagem: 'Atividade registrada' });
