@@ -101,7 +101,7 @@ async function verificarToken(req, res, next) {
     // 4. ✅ ADICIONADO: Atualiza o último acesso (marca como "online")
     await supabase
       .from('usuarios')
-      .update({ ultimo_acesso: new Date().toISOString() })
+      .update({ ultimo_acesso: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' })
       .eq('id', userId);
 
     // 5. Anexa os dados do usuário na requisição para uso nas rotas
@@ -116,7 +116,7 @@ async function verificarToken(req, res, next) {
 
 // ================= STATUS =================
 app.get('/api/status', (req, res) => {
-  res.json({ servidor: '🟢 Online', timestamp: new Date().toISOString() });
+  res.json({ servidor: '🟢 Online', timestamp: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 });
 
 // ================= LOGIN =================
@@ -165,7 +165,7 @@ app.post('/api/auth/login', async (req, res) => {
     // ✅ ADICIONADO: Registra o último acesso logo no login também
     await supabase
       .from('usuarios')
-      .update({ ultimo_acesso: new Date().toISOString() })
+      .update({ ultimo_acesso: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' })
       .eq('id', user.id);
 
     res.json({ sucesso: true, token });
@@ -190,7 +190,7 @@ app.post('/api/auth/register', async (req, res) => {
       nome,
       plano,
       status: 'inativo',
-      created_at: new Date().toISOString()
+      created_at: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' })
     }]);
 
     res.json({ sucesso: true });
