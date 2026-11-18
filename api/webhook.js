@@ -145,7 +145,7 @@ async function enviarEmail(to, subject, html) {
 async function adquirirLock(paymentId, email, plano) {
     const { error } = await supabase
         .from('pagamentos_processados')
-        .insert({ payment_id: String(paymentId), email, plano });
+        .insert({ payment_id: String(paymentId) });
 
     if (!error) return 'ok';
     if (error.code === '23505') return 'duplicado';
