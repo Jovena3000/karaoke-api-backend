@@ -1,43 +1,30 @@
+// api/auth.js - login com verificação de plano e sessão de no máximo 30 dias
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { createClient } = require('@supabase/supabase-js');
-
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
-);
+const {
+    supabase,
+    aplicarCors,
+    planoAtivo,
+    segundosDeSessao
+} = require('./_lib/validarSessao');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 module.exports = async (req, res) => {
-
-    // 🔥 CORS DINÂMICO
-    const allowedOrigins = [
-        'https://karaokemultiplayer.com.br',
-        'https://www.karaokemultiplayer.com.br',
-        'https://karaoke-multiplayer.pages.dev',
-        ];
-
-    const origin = req.headers.origin;
-
-    if (allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    }
-
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    // 🔥 Preflight
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    if (aplicarCors(req, res, 'POST, OPTIONS')) return;
 
     if (req.method !== 'POST') {
         return res.status(405).json({ erro: 'Método não permitido' });
     }
 
+    if (!JWT_SECRET) {
+        console.error('JWT_SECRET não configurado');
+        return res.status(500).json({ erro: 'Erro interno no servidor' });
+    }
+
     try {
-        const { email, senha } = req.body;
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const senha = String(req.body?.senha || '');
 
         if (!email || !senha) {
             return res.status(400).json({ erro: 'Email e senha são obrigatórios' });
@@ -47,25 +34,37 @@ module.exports = async (req, res) => {
             .from('usuarios')
             .select('*')
             .eq('email', email)
-            .single();
+            .maybeSingle();
+
+        if (error) {
+            console.error('Erro ao buscar usuário:', error.message);
+            return res.status(500).json({ erro: 'Erro interno no servidor' });
+        }
 
         if (!user || !(await bcrypt.compare(senha, user.senha_hash))) {
             return res.status(401).json({ erro: 'Credenciais inválidas' });
         }
 
-        if (user.status !== 'ativo') {
-            return res.status(403).json({ erro: 'Acesso não autorizado. Pagamento pendente.' });
+        // Plano precisa estar ativo E dentro da validade (antes só o status era conferido)
+        if (!planoAtivo(user)) {
+            return res.status(403).json({
+                erro: 'Seu plano venceu ou o pagamento está pendente. Renove para acessar.',
+                codigo: 'PLANO_VENCIDO'
+            });
         }
 
+        // Sessão: no máximo 30 dias, e nunca além do vencimento do plano
+        const segundos = segundosDeSessao(user);
         const token = jwt.sign(
             { userId: user.id, email: user.email, plano: user.plano },
             JWT_SECRET,
-            { expiresIn: '7d' }
+            { algorithm: 'HS256', expiresIn: segundos }
         );
 
-        res.json({
+        return res.json({
             sucesso: true,
             token,
+            sessao_expira_em: new Date(Date.now() + segundos * 1000).toISOString(),
             usuario: {
                 nome: user.nome,
                 email: user.email,
@@ -75,6 +74,6 @@ module.exports = async (req, res) => {
 
     } catch (error) {
         console.error('Erro no login:', error);
-        res.status(500).json({ erro: 'Erro interno no servidor' });
+        return res.status(500).json({ erro: 'Erro interno no servidor' });
     }
 };
