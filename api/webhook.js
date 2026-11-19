@@ -37,7 +37,7 @@ const LOGIN_URL = 'https://karaokemultiplayer.com.br/login.html';
 const LOGO_URL = 'https://uploads.onecompiler.io/43v37pq3s/1783903529895/karaokeM01%20(1).png';
 
 // O checkout promete "7 dias grátis adicionais". Se quiser cumprir isso, coloque 7.
-const BONUS_DIAS = 0;
+const BONUS_DIAS = 7;
 
 const PLANOS = {
     mensal:     { dias: 30,  valor: 21.90 },
