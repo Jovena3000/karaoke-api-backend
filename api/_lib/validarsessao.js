@@ -19,9 +19,9 @@ const ALLOWED_ORIGINS = [
     'https://karaoke-multiplayer.pages.dev'
 ];
 
-function aplicarCors(req, res, metodos = 'GET, POST, OPTIONS') {
+function aplicarCors(req, res, metodos = 'GET, POST, OPTIONS', origensExtras = []) {
     const origin = req.headers.origin;
-    if (ALLOWED_ORIGINS.includes(origin)) {
+    if (ALLOWED_ORIGINS.includes(origin) || origensExtras.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Vary', 'Origin');
     }
